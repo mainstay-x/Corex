@@ -1,0 +1,10 @@
+# Nunca publicar: dados pessoais, banco, funções e documentação interna.
+private/
+scripts/
+sql/
+supabase/
+docs/
+skills/
+AGENTS.md
+*.zip
+.DS_Store

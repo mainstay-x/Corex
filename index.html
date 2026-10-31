@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light" />
+    <meta name="theme-color" content="#f4f7fb" />
+    <title>COREX | FlowCore Solutions</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&amp;family=Manrope:wght@600;700;800&amp;display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main id="login-view" class="login-view">
+      <section class="login-brand" aria-label="Apresentação do COREX">
+        <div class="ambient ambient-one"></div>
+        <div class="ambient ambient-two"></div>
+        <div class="brand-lockup brand-lockup-light">
+          <span class="brand-symbol" aria-hidden="true"><i></i><i></i><i></i></span>
+          <span>FlowCore <b>Solutions</b></span>
+        </div>
+        <div class="login-brand-copy">
+          <p class="eyebrow">Sales operating system</p>
+          <h1>Clareza comercial para decisões que avançam.</h1>
+          <p>
+            O COREX organiza pessoas, processos e contexto em uma única operação.
+          </p>
+        </div>
+        <p class="login-brand-foot">FlowCore Solutions · Ambiente interno</p>
+      </section>
+
+      <section class="login-panel">
+        <div class="login-card">
+          <div class="mobile-brand brand-lockup">
+            <span class="brand-symbol" aria-hidden="true"><i></i><i></i><i></i></span>
+            <span>FlowCore <b>Solutions</b></span>
+          </div>
+          <p class="eyebrow">Acesso seguro</p>
+          <h2>Entre no COREX</h2>
+          <p class="login-intro">Use o e-mail cadastrado pela administração.</p>
+
+          <form id="login-form" novalidate>
+            <label for="login-email">E-mail</label>
+            <input
+              id="login-email"
+              name="email"
+              type="email"
+              autocomplete="username"
+              placeholder="nome@flowcore.com.br"
+              required
+            />
+
+            <label for="login-password">Senha</label>
+            <div class="password-field">
+              <input
+                id="login-password"
+                name="password"
+                type="password"
+                autocomplete="current-password"
+                placeholder="Sua senha"
+                minlength="8"
+                required
+              />
+              <button id="toggle-password" class="input-action" type="button" aria-label="Mostrar senha">
+                Mostrar
+              </button>
+            </div>
+
+            <p id="login-message" class="form-message" role="alert" aria-live="polite"></p>
+            <button id="login-submit" class="button button-primary button-wide" type="submit">
+              <span>Entrar</span>
+              <span aria-hidden="true">→</span>
+            </button>
+          </form>
+          <p class="login-help">Problemas de acesso? Procure um administrador do COREX.</p>
+        </div>
+      </section>
+    </main>
+
+    <div id="app-view" class="app-shell" hidden>
+      <aside id="sidebar" class="sidebar">
+        <div class="sidebar-head">
+          <div class="brand-lockup">
+            <span class="brand-symbol" aria-hidden="true"><i></i><i></i><i></i></span>
+            <span class="brand-name">FlowCore <b>Solutions</b></span>
+          </div>
+          <button id="sidebar-collapse" class="icon-button sidebar-collapse" type="button" aria-label="Recolher menu">
+            <span aria-hidden="true">‹</span>
+          </button>
+        </div>
+
+        <div class="product-label">
+          <span class="product-dot"></span>
+          <span class="product-copy"><b>COREX</b><small>Comercial</small></span>
+        </div>
+
+        <nav id="primary-nav" class="primary-nav" aria-label="Navegação principal"></nav>
+
+        <div class="sidebar-footer">
+          <div id="sidebar-profile" class="sidebar-profile">
+            <span id="profile-avatar" class="profile-avatar" aria-hidden="true"></span>
+            <span class="profile-copy">
+              <b id="profile-name"></b>
+              <small id="profile-role"></small>
+            </span>
+          </div>
+          <button id="logout-button" class="icon-button" type="button" aria-label="Sair">
+            <span aria-hidden="true">↗</span>
+          </button>
+        </div>
+      </aside>
+
+      <div id="sidebar-scrim" class="sidebar-scrim" hidden></div>
+
+      <section class="workspace-frame">
+        <header class="topbar">
+          <button id="mobile-menu" class="icon-button mobile-menu" type="button" aria-label="Abrir menu">
+            <span aria-hidden="true">☰</span>
+          </button>
+          <div>
+            <p id="page-kicker" class="page-kicker">Visão geral</p>
+            <h1 id="page-title">Início</h1>
+          </div>
+          <div id="topbar-actions" class="topbar-actions"></div>
+        </header>
+
+        <div class="workspace-layout">
+          <main id="workspace" class="workspace" tabindex="-1"></main>
+          <aside id="context-panel" class="context-panel" hidden aria-label="Painel contextual">
+            <header class="context-panel-head">
+              <div>
+                <p class="page-kicker">Contexto</p>
+                <h2 id="context-title"></h2>
+              </div>
+              <button id="context-close" class="icon-button" type="button" aria-label="Fechar painel">×</button>
+            </header>
+            <div id="context-content" class="context-content"></div>
+          </aside>
+        </div>
+
+        <footer class="statusbar">
+          <span><i class="status-dot"></i><span id="connection-status">Conectado</span></span>
+          <span id="environment-label"></span>
+          <span id="status-clock"></span>
+        </footer>
+      </section>
+    </div>
+
+    <div id="toast-region" class="toast-region" aria-live="polite" aria-atomic="true"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="config.js"></script>
+    <script src="api.js"></script>
+    <script src="screens/common.js"></script>
+    <script src="screens/commercial.js"></script>
+    <script src="screens/briefing.js"></script>
+    <script src="screens/leads.js"></script>
+    <script src="screens/opportunities.js"></script>
+    <script src="screens/payments.js"></script>
+    <script src="screens/lead.js"></script>
+    <script src="screens/followups.js"></script>
+    <script src="screens/goals.js"></script>
+    <script src="screens/users.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>
