@@ -3,7 +3,7 @@
 
   const api = window.CorexApi;
   const config = window.COREX_CONFIG;
-  const state = { profile: null, route: "home", routeParam: null, booting: false, leaveHandlers: [], mfa: null, passwordEntered: false };
+  const state = { profile: null, route: "home", routeParam: null, booting: false, leaveHandlers: [], mfa: null, passwordEntered: false, mfaTimer: null, mfaVerifying: false };
 
   const elements = {
     loginView: document.getElementById("login-view"),
@@ -42,6 +42,7 @@
     mfaSecret: document.getElementById("mfa-secret"),
     mfaCode: document.getElementById("mfa-code"),
     mfaMessage: document.getElementById("mfa-message"),
+    mfaTimer: document.getElementById("mfa-timer"),
     mfaSubmit: document.getElementById("mfa-submit"),
     mfaCancel: document.getElementById("mfa-cancel"),
   };
@@ -96,8 +97,36 @@
     elements.loginMessage.textContent = message || "";
   }
 
+  // Prazo para digitar o código. Ao esgotar, a sessão é encerrada e a senha volta a ser pedida.
+  const MFA_SECONDS = 59;
+
+  function stopMfaTimer() {
+    if (state.mfaTimer) window.clearInterval(state.mfaTimer);
+    state.mfaTimer = null;
+  }
+
+  function startMfaTimer() {
+    stopMfaTimer();
+    const deadline = Date.now() + MFA_SECONDS * 1000;
+    const tick = async () => {
+      const left = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
+      elements.mfaTimer.textContent = "Tempo para digitar o código: " + left + " s";
+      elements.mfaTimer.classList.toggle("is-urgent", left <= 10);
+      if (left > 0 || state.mfaVerifying) return;
+      stopMfaTimer();
+      try {
+        await api.signOut();
+      } finally {
+        showLogin("Tempo esgotado. Entre de novo e digite o código em até " + MFA_SECONDS + " segundos.");
+      }
+    };
+    tick();
+    state.mfaTimer = window.setInterval(tick, 250);
+  }
+
   function showLogin(message) {
     leaveCurrentScreen();
+    stopMfaTimer();
     state.profile = null;
     state.mfa = null;
     state.passwordEntered = false;
@@ -137,6 +166,7 @@
     elements.mfaForm.hidden = false;
     elements.mfaCode.value = "";
     elements.mfaMessage.textContent = "";
+    startMfaTimer();
     window.setTimeout(() => elements.mfaCode.focus(), 0);
   }
 
@@ -424,8 +454,10 @@
       return;
     }
     setBusy(elements.mfaSubmit, true, "Confirmando...");
+    state.mfaVerifying = true;
     try {
       await api.verifyTotp(state.mfa.factorId, code);
+      stopMfaTimer();
       state.mfa = null;
       elements.mfaForm.hidden = true;
       await loadAuthenticatedApp();
@@ -433,6 +465,7 @@
       elements.mfaMessage.textContent = error.message || "Código inválido.";
       elements.mfaCode.select();
     } finally {
+      state.mfaVerifying = false;
       setBusy(elements.mfaSubmit, false, "Confirmar");
     }
   });

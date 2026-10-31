@@ -1312,3 +1312,13 @@ textarea:focus {
 .mfa-cancel {
   margin-top: 10px;
 }
+.mfa-timer {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  text-align: center;
+}
+.mfa-timer.is-urgent {
+  color: var(--danger);
+  font-weight: 700;
+}
