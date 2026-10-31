@@ -246,13 +246,34 @@
     });
     reset.appendChild(resetButton);
 
+    const mfaReset = context.make("section", "form-section");
+    mfaReset.append(
+      context.make("h3", "", "Redefinir autenticador"),
+      context.make("p", "", "Use quando a pessoa trocar ou perder o celular. No próximo acesso, ela cadastra o app autenticador de novo."),
+    );
+    const mfaButton = context.make("button", "button button-secondary", "Redefinir autenticador");
+    mfaButton.type = "button";
+    mfaButton.addEventListener("click", async () => {
+      if (!window.confirm("Redefinir o autenticador desta conta?")) return;
+      setButtonBusy(mfaButton, true, "Redefinir autenticador", "Redefinindo...");
+      try {
+        await context.api.resetUserMfa({ user_id: user.user_id });
+        context.toast("Autenticador redefinido.", "success");
+      } catch (error) {
+        context.toast(error.message || "Não foi possível redefinir o autenticador.", "error");
+      } finally {
+        setButtonBusy(mfaButton, false, "Redefinir autenticador", "Redefinindo...");
+      }
+    });
+    mfaReset.appendChild(mfaButton);
+
     const actions = context.make("div", "form-actions");
     const cancel = context.make("button", "button button-secondary", "Cancelar");
     cancel.type = "button";
     cancel.addEventListener("click", context.closePanel);
     const submit = formButton(context, "Salvar alterações");
     actions.append(cancel, submit);
-    form.append(identity, access, reset, actions);
+    form.append(identity, access, reset, mfaReset, actions);
     applyRoleDefaults(context, form, role.value, team, false);
 
     form.addEventListener("submit", async (event) => {

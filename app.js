@@ -3,7 +3,7 @@
 
   const api = window.CorexApi;
   const config = window.COREX_CONFIG;
-  const state = { profile: null, route: "home", routeParam: null, booting: false, leaveHandlers: [] };
+  const state = { profile: null, route: "home", routeParam: null, booting: false, leaveHandlers: [], mfa: null };
 
   const elements = {
     loginView: document.getElementById("login-view"),
@@ -35,7 +35,17 @@
     whatsappCost: document.getElementById("whatsapp-cost"),
     statusClock: document.getElementById("status-clock"),
     toastRegion: document.getElementById("toast-region"),
+    loginIntro: document.getElementById("login-intro"),
+    mfaForm: document.getElementById("mfa-form"),
+    mfaEnroll: document.getElementById("mfa-enroll"),
+    mfaQr: document.getElementById("mfa-qr"),
+    mfaSecret: document.getElementById("mfa-secret"),
+    mfaCode: document.getElementById("mfa-code"),
+    mfaMessage: document.getElementById("mfa-message"),
+    mfaSubmit: document.getElementById("mfa-submit"),
+    mfaCancel: document.getElementById("mfa-cancel"),
   };
+  const loginIntroText = elements.loginIntro.textContent;
 
   function clear(node) {
     while (node.firstChild) node.removeChild(node.firstChild);
@@ -89,12 +99,44 @@
   function showLogin(message) {
     leaveCurrentScreen();
     state.profile = null;
+    state.mfa = null;
     elements.whatsappCost.hidden = true;
     elements.appView.hidden = true;
     elements.loginView.hidden = false;
+    elements.mfaForm.hidden = true;
+    elements.loginForm.hidden = false;
+    elements.loginIntro.textContent = loginIntroText;
     elements.loginPassword.value = "";
+    elements.mfaCode.value = "";
     setLoginMessage(message || "");
     window.setTimeout(() => elements.loginEmail.focus(), 0);
+  }
+
+  // Segundo fator: cadastro do app autenticador no primeiro acesso, código nos demais.
+  async function showMfa() {
+    if (state.mfa) return;
+    const factors = await api.listTotpFactors();
+    const verified = factors.find((factor) => factor.status === "verified");
+    if (verified) {
+      state.mfa = { factorId: verified.id };
+      elements.mfaEnroll.hidden = true;
+      elements.loginIntro.textContent = "Digite o código de 6 dígitos do app autenticador.";
+    } else {
+      const enrollment = await api.startTotpEnrollment();
+      state.mfa = { factorId: enrollment.factorId };
+      elements.mfaQr.src = enrollment.qrSrc;
+      elements.mfaSecret.textContent = enrollment.secret;
+      elements.mfaEnroll.hidden = false;
+      elements.loginIntro.textContent =
+        "Primeiro acesso: leia o QR code com o Google Authenticator ou o Microsoft Authenticator e digite o código gerado.";
+    }
+    elements.appView.hidden = true;
+    elements.loginView.hidden = false;
+    elements.loginForm.hidden = true;
+    elements.mfaForm.hidden = false;
+    elements.mfaCode.value = "";
+    elements.mfaMessage.textContent = "";
+    window.setTimeout(() => elements.mfaCode.focus(), 0);
   }
 
   function showApp() {
@@ -317,6 +359,17 @@
     if (state.booting) return;
     state.booting = true;
     try {
+      const status = await api.getAccessStatus();
+      if (status !== "active") {
+        await api.signOut();
+        showLogin(status === "inactive" ? "Acesso desativado" : "Acesso não configurado");
+        return;
+      }
+      const assurance = await api.getAssurance();
+      if (assurance.currentLevel !== "aal2") {
+        await showMfa();
+        return;
+      }
       const profile = await api.getCurrentProfile();
       if (!profile) {
         await api.signOut();
@@ -328,6 +381,7 @@
         showLogin("Acesso desativado");
         return;
       }
+      state.mfa = null;
       state.profile = profile;
       showApp();
     } catch (error) {
@@ -349,6 +403,36 @@
       setLoginMessage(error.message || "E-mail ou senha inválidos.");
     } finally {
       setBusy(elements.loginSubmit, false, "Entrar");
+    }
+  });
+
+  elements.mfaForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    elements.mfaMessage.textContent = "";
+    const code = elements.mfaCode.value.replace(/\D/g, "");
+    if (code.length !== 6 || !state.mfa) {
+      elements.mfaMessage.textContent = "Digite os 6 dígitos do app autenticador.";
+      return;
+    }
+    setBusy(elements.mfaSubmit, true, "Confirmando...");
+    try {
+      await api.verifyTotp(state.mfa.factorId, code);
+      state.mfa = null;
+      elements.mfaForm.hidden = true;
+      await loadAuthenticatedApp();
+    } catch (error) {
+      elements.mfaMessage.textContent = error.message || "Código inválido.";
+      elements.mfaCode.select();
+    } finally {
+      setBusy(elements.mfaSubmit, false, "Confirmar");
+    }
+  });
+
+  elements.mfaCancel.addEventListener("click", async () => {
+    try {
+      await api.signOut();
+    } finally {
+      showLogin("");
     }
   });
 

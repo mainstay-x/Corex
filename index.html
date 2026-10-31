@@ -41,7 +41,7 @@
           </div>
           <p class="eyebrow">Acesso seguro</p>
           <h2>Entre no COREX</h2>
-          <p class="login-intro">Use o e-mail cadastrado pela administração.</p>
+          <p id="login-intro" class="login-intro">Use o e-mail cadastrado pela administração.</p>
 
           <form id="login-form" novalidate>
             <label for="login-email">E-mail</label>
@@ -75,6 +75,34 @@
               <span>Entrar</span>
               <span aria-hidden="true">→</span>
             </button>
+          </form>
+
+          <form id="mfa-form" novalidate hidden>
+            <div id="mfa-enroll" class="mfa-enroll" hidden>
+              <img id="mfa-qr" class="mfa-qr" alt="QR code para cadastrar o COREX no app autenticador" width="184" height="184" />
+              <p class="mfa-secret-label">Sem câmera? Digite esta chave no app:</p>
+              <code id="mfa-secret" class="mfa-secret"></code>
+            </div>
+
+            <label for="mfa-code">Código de 6 dígitos</label>
+            <input
+              id="mfa-code"
+              name="code"
+              type="text"
+              inputmode="numeric"
+              autocomplete="one-time-code"
+              pattern="[0-9]{6}"
+              maxlength="6"
+              placeholder="000000"
+              required
+            />
+
+            <p id="mfa-message" class="form-message" role="alert" aria-live="polite"></p>
+            <button id="mfa-submit" class="button button-primary button-wide" type="submit">
+              <span>Confirmar</span>
+              <span aria-hidden="true">→</span>
+            </button>
+            <button id="mfa-cancel" class="button button-secondary button-wide mfa-cancel" type="button">Voltar ao login</button>
           </form>
           <p class="login-help">Problemas de acesso? Procure um administrador do COREX.</p>
         </div>

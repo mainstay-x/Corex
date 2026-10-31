@@ -1272,3 +1272,43 @@ textarea:focus {
 .signup-result dt { color: var(--muted, #5b6676); }
 .signup-result dd { margin: 0; font-weight: 600; overflow-wrap: anywhere; }
 #signup-connect .button + .button { margin-top: 10px; }
+
+/* Segundo fator no login */
+.mfa-enroll {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  text-align: center;
+}
+.mfa-qr {
+  width: 184px;
+  height: 184px;
+  padding: 8px;
+  border: 1px solid #d5dde8;
+  border-radius: var(--radius-sm);
+  background: #fff;
+}
+.mfa-secret-label {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+.mfa-secret {
+  max-width: 100%;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  background: #eef3f9;
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+#mfa-code {
+  font-size: 22px;
+  letter-spacing: 0.3em;
+  text-align: center;
+}
+.mfa-cancel {
+  margin-top: 10px;
+}

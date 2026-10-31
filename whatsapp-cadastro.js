@@ -167,6 +167,7 @@
     document.body.append(script);
   }
 
+  // A página usa a sessão do COREX (mesmo domínio), já confirmada com o app autenticador.
   function showLogin() {
     connect.hidden = true;
     loginForm.hidden = false;
@@ -178,20 +179,6 @@
     if (!window.FB && !document.querySelector('script[src*="connect.facebook.net"]')) loadFacebookSdk();
   }
 
-  loginForm.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    say("");
-    const { error } = await client.auth.signInWithPassword({
-      email: document.getElementById("signup-email").value.trim(),
-      password: document.getElementById("signup-password").value,
-    });
-    if (error) {
-      say("E-mail ou senha inválidos.");
-      return;
-    }
-    showConnect();
-  });
-
   document.getElementById("signup-logout").addEventListener("click", async () => {
     await client.auth.signOut();
     result.hidden = true;
@@ -201,8 +188,12 @@
 
   startButton.addEventListener("click", launch);
 
-  client.auth.getSession().then(({ data }) => {
-    if (data.session) showConnect();
-    else showLogin();
-  });
+  async function checkSession() {
+    const { data } = await client.auth.getSession();
+    if (!data.session) return false;
+    const assurance = await client.auth.mfa.getAuthenticatorAssuranceLevel();
+    return assurance.data?.currentLevel === "aal2";
+  }
+
+  checkSession().then((confirmed) => (confirmed ? showConnect() : showLogin()));
 })();

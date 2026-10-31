@@ -42,6 +42,49 @@
     return result.data.session;
   }
 
+  async function getAccessStatus() {
+    const result = await client.rpc("corex_access_status");
+    if (result.error) throw new Error(messageFrom(result.error, "Não foi possível validar o acesso."));
+    return result.data;
+  }
+
+  async function getAssurance() {
+    const result = await client.auth.mfa.getAuthenticatorAssuranceLevel();
+    if (result.error) throw new Error(messageFrom(result.error, "Não foi possível validar o segundo fator."));
+    return result.data;
+  }
+
+  async function listTotpFactors() {
+    const result = await client.auth.mfa.listFactors();
+    if (result.error) throw new Error(messageFrom(result.error, "Não foi possível consultar o autenticador."));
+    return result.data.totp || [];
+  }
+
+  // Cadastro do app autenticador. Tentativas anteriores não confirmadas são descartadas.
+  async function startTotpEnrollment() {
+    const listed = await client.auth.mfa.listFactors();
+    if (listed.error) throw new Error(messageFrom(listed.error, "Não foi possível consultar o autenticador."));
+    const pending = (listed.data.all || []).filter((factor) => factor.factor_type === "totp" && factor.status !== "verified");
+    for (const factor of pending) {
+      const removed = await client.auth.mfa.unenroll({ factorId: factor.id });
+      if (removed.error) throw new Error(messageFrom(removed.error, "Não foi possível reiniciar o cadastro do autenticador."));
+    }
+    const result = await client.auth.mfa.enroll({ factorType: "totp", friendlyName: "COREX " + Date.now() });
+    if (result.error) throw new Error(messageFrom(result.error, "Não foi possível iniciar o cadastro do autenticador."));
+    const qr = result.data.totp.qr_code || "";
+    return {
+      factorId: result.data.id,
+      qrSrc: qr.startsWith("data:") ? qr : "data:image/svg+xml;charset=utf-8," + encodeURIComponent(qr),
+      secret: result.data.totp.secret,
+    };
+  }
+
+  async function verifyTotp(factorId, code) {
+    const result = await client.auth.mfa.challengeAndVerify({ factorId, code });
+    if (result.error) throw new Error("Código inválido. Confira o horário do celular e tente de novo.");
+    return result.data;
+  }
+
   async function getCurrentProfile() {
     const session = await getSession();
     if (!session || !session.user) return null;
@@ -369,10 +412,16 @@
     signOut,
     getSession,
     getCurrentProfile,
+    getAccessStatus,
+    getAssurance,
+    listTotpFactors,
+    startTotpEnrollment,
+    verifyTotp,
     listUsers: () => invokeAdmin("list"),
     createUser: (payload) => invokeAdmin("create", payload),
     updateUser: (payload) => invokeAdmin("update", payload),
     resetUserPassword: (payload) => invokeAdmin("reset_password", payload),
+    resetUserMfa: (payload) => invokeAdmin("reset_mfa", payload),
     getSdrCatalog,
     listLeads,
     getLead,
