@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>Conectar WhatsApp | COREX</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&amp;family=Manrope:wght@600;700;800&amp;display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="login-view">
+      <section class="login-brand" aria-label="Apresentação do COREX">
+        <div class="ambient ambient-one"></div>
+        <div class="ambient ambient-two"></div>
+        <div class="brand-lockup brand-lockup-light">
+          <span class="brand-symbol" aria-hidden="true"><i></i><i></i><i></i></span>
+          <span>FlowCore <b>Solutions</b></span>
+        </div>
+        <div class="login-brand-copy">
+          <p class="eyebrow">WhatsApp Business</p>
+          <h1>Conecte o número da FlowCore ao COREX.</h1>
+          <p>O número continua no app do celular e as conversas passam a aparecer no Inbox.</p>
+        </div>
+        <p class="login-brand-foot">FlowCore Solutions · Ambiente interno</p>
+      </section>
+
+      <section class="login-panel">
+        <div class="login-card">
+          <div class="mobile-brand brand-lockup">
+            <span class="brand-symbol" aria-hidden="true"><i></i><i></i><i></i></span>
+            <span>FlowCore <b>Solutions</b></span>
+          </div>
+          <p class="eyebrow">Cadastro do número</p>
+          <h2>Conectar WhatsApp</h2>
+
+          <form id="signup-login" novalidate hidden>
+            <p class="login-intro">Entre com a conta do Founder ou de um administrador.</p>
+            <label for="signup-email">E-mail</label>
+            <input id="signup-email" type="email" autocomplete="username" required />
+            <label for="signup-password">Senha</label>
+            <input id="signup-password" type="password" autocomplete="current-password" required />
+            <button class="button button-primary button-wide" type="submit">Entrar</button>
+          </form>
+
+          <section id="signup-connect" hidden>
+            <p class="login-intro">
+              Tenha em mãos o celular com o WhatsApp Business da FlowCore, na versão 2.24.17 ou superior.
+              Ao final, os aparelhos conectados (WhatsApp Web e Desktop) serão desconectados.
+            </p>
+            <button id="signup-start" class="button button-primary button-wide" type="button" disabled>
+              Conectar número
+            </button>
+            <button id="signup-logout" class="button button-secondary button-wide" type="button">Sair</button>
+          </section>
+
+          <dl id="signup-result" class="signup-result" hidden></dl>
+          <p id="signup-message" class="form-message" role="alert" aria-live="polite"></p>
+        </div>
+      </section>
+    </main>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="config.js"></script>
+    <script src="whatsapp-cadastro.js"></script>
+  </body>
+</html>

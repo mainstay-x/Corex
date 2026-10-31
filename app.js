@@ -3,7 +3,7 @@
 
   const api = window.CorexApi;
   const config = window.COREX_CONFIG;
-  const state = { profile: null, route: "home", routeParam: null, booting: false };
+  const state = { profile: null, route: "home", routeParam: null, booting: false, leaveHandlers: [] };
 
   const elements = {
     loginView: document.getElementById("login-view"),
@@ -32,6 +32,7 @@
     contextContent: document.getElementById("context-content"),
     contextClose: document.getElementById("context-close"),
     environmentLabel: document.getElementById("environment-label"),
+    whatsappCost: document.getElementById("whatsapp-cost"),
     statusClock: document.getElementById("status-clock"),
     toastRegion: document.getElementById("toast-region"),
   };
@@ -86,7 +87,9 @@
   }
 
   function showLogin(message) {
+    leaveCurrentScreen();
     state.profile = null;
+    elements.whatsappCost.hidden = true;
     elements.appView.hidden = true;
     elements.loginView.hidden = false;
     elements.loginPassword.value = "";
@@ -135,9 +138,11 @@
         { id: "leads", label: "Leads", icon: "◎" },
       );
     }
+    if (sdrAccess || closerAccess) items.push({ id: "inbox", label: "Inbox", icon: "✉" });
     if (closerAccess) items.push({ id: "opportunities", label: "Oportunidades", icon: "◇" });
     if (sdrAccess || closerAccess) items.push({ id: "followups", label: "Retornos", icon: "◷" });
     if (billingAccess) items.push({ id: "payments", label: "Pagamentos", icon: "▣" });
+    if (sdrAccess || closerAccess || billingAccess) items.push({ id: "messages", label: "Mensagens", icon: "◌" });
     if (sdrAccess) items.push({ id: "goals", label: "Metas", icon: "◇" });
     if (!items.length) items.push({ id: "home", label: "Início", icon: "⌂" });
     if (canManageUsers(state.profile)) items.push({ id: "users", label: "Usuários", icon: "◎" });
@@ -251,10 +256,39 @@
     return {
       workspace: elements.workspace, currentProfile: state.profile, api, make, clear, toast,
       openPanel, closePanel, setTopbarActions, navigate,
+      onLeave: (handler) => state.leaveHandlers.push(handler),
     };
   }
 
+  function leaveCurrentScreen() {
+    const handlers = state.leaveHandlers.splice(0);
+    handlers.forEach((handler) => {
+      try {
+        handler();
+      } catch (_ignored) {
+        // Uma limpeza com erro não impede a próxima tela.
+      }
+    });
+  }
+
+  async function refreshWhatsappCost() {
+    const visible = navigationItems().some((item) => item.id === "inbox" || item.id === "messages");
+    if (!visible) {
+      elements.whatsappCost.hidden = true;
+      return;
+    }
+    try {
+      const summary = await api.getWhatsappSummary();
+      const money = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
+      elements.whatsappCost.textContent = "WhatsApp no mês: " + money.format(Number(summary.spent || 0)) + " / " + money.format(Number(summary.limit || 0));
+      elements.whatsappCost.hidden = false;
+    } catch (_error) {
+      elements.whatsappCost.hidden = true;
+    }
+  }
+
   function navigate(route, param) {
+    leaveCurrentScreen();
     const items = navigationItems();
     const allowed = items.some((item) => item.id === route) || (route === "lead" && items.some((item) => item.id === "leads" || item.id === "opportunities" || item.id === "payments"));
     state.route = allowed ? route : (navigationItems()[0] || { id: "home" }).id;
@@ -272,7 +306,10 @@
     else if (state.route === "followups") { setHeader("Retornos", state.profile.role === "closer" ? "Operação Closer" : "Operação comercial"); window.CorexScreens.followups.render(screenContext()); }
     else if (state.route === "payments") { setHeader("Pagamentos", "Controle manual"); window.CorexScreens.payments.render(screenContext()); }
     else if (state.route === "goals") { setHeader("Metas", "Operação SDR"); window.CorexScreens.goals.render(screenContext()); }
+    else if (state.route === "inbox") { setHeader("Inbox", "WhatsApp"); window.CorexScreens.inbox.render(screenContext(), state.routeParam); }
+    else if (state.route === "messages") { setHeader("Mensagens", "WhatsApp"); window.CorexScreens.messages.render(screenContext()); }
     else renderHome();
+    refreshWhatsappCost();
     elements.workspace.focus();
   }
 

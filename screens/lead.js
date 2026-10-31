@@ -192,6 +192,11 @@
       title.append(context.make("p", "eyebrow", ui().stageLabels[data.lead.stage] || data.lead.stage), context.make("h2", "", data.lead.name), context.make("p", "", (data.lead.phone || "Sem telefone") + " · nível " + (data.tier.tier || "normal") + " · " + ownerLabel));
       const actions = context.make("div", "lead-actions");
       const profile = context.currentProfile;
+      const inboxAccess = profile.role === "sdr" || profile.role === "closer" || canManageAll(profile);
+      if (data.lead.phone && inboxAccess && window.CorexScreens.inbox) {
+        const conversation = context.make("button", "button button-secondary", "Conversa no WhatsApp"); conversation.type = "button";
+        conversation.addEventListener("click", () => context.navigate("inbox", leadId)); actions.appendChild(conversation);
+      }
       const managesAll = canManageAll(profile);
       const sdrFlow = data.lead.owner_role === "sdr" || !data.lead.owner_role;
       const canRunSdrFlow = sdrFlow && (managesAll || (profile.role === "sdr" && (!data.lead.owner_id || data.lead.owner_id === profile.user_id)));

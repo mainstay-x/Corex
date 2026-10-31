@@ -7,4 +7,8 @@ window.COREX_CONFIG = Object.freeze({
   timeZone: "America/Sao_Paulo",
   appName: "COREX",
   environment: "Produção",
+  // Valores públicos do app da Meta, usados só na página whatsapp-cadastro.html.
+  whatsappAppId: "",
+  whatsappSignupConfigId: "",
+  whatsappGraphVersion: "v26.0",
 });

@@ -56,9 +56,11 @@
   }
 
   async function invokeAdmin(action, payload) {
-    const result = await client.functions.invoke("corex-admin-users", {
-      body: Object.assign({ action }, payload || {}),
-    });
+    return invokeFunction("corex-admin-users", Object.assign({ action }, payload || {}), "A operação administrativa falhou.");
+  }
+
+  async function invokeFunction(name, body, fallback) {
+    const result = await client.functions.invoke(name, { body });
 
     if (result.error) {
       let detail = result.error.message;
@@ -71,7 +73,7 @@
       } catch (_ignored) {
         detail = result.error.message;
       }
-      throw new Error(detail || "A operação administrativa falhou.");
+      throw new Error(detail || fallback);
     }
 
     if (result.data && result.data.error) throw new Error(String(result.data.error));
@@ -290,6 +292,74 @@
     return throwIfError(await client.rpc("corex_goal_metrics"), "Não foi possível calcular as metas.");
   }
 
+  async function listWhatsappConversations() {
+    const conversationResult = await client.from("corex_whatsapp_conversations").select("*").order("last_at", { ascending: false }).limit(500);
+    const conversations = throwIfError(conversationResult, "Não foi possível carregar as conversas.") || [];
+    if (!conversations.length) return [];
+    const ids = conversations.map((item) => item.lead_id);
+    const leadResult = await client.from("corex_leads").select("id, name, phone, stage, owner_id, owner_role").in("id", ids);
+    const leads = throwIfError(leadResult, "Não foi possível carregar os leads das conversas.") || [];
+    return conversations
+      .map((item) => ({ ...item, lead: leads.find((lead) => lead.id === item.lead_id) || null }))
+      .filter((item) => item.lead);
+  }
+
+  async function getWhatsappConversation(leadId) {
+    const [leadResult, interactionResult, messageResult, mediaResult] = await Promise.all([
+      client.from("corex_leads").select("id, name, phone, stage, owner_id, owner_role").eq("id", leadId).single(),
+      client.from("corex_interactions").select("id, direction, author_id, body, wa_message_id, occurred_at")
+        .eq("lead_id", leadId).eq("channel", "whatsapp").order("occurred_at", { ascending: false }).limit(300),
+      client.from("corex_whatsapp_messages").select("id, interaction_id, wa_message_id, origin, author_id, status, error_title, created_at")
+        .eq("lead_id", leadId).order("created_at", { ascending: false }).limit(300),
+      client.from("corex_whatsapp_media").select("id, interaction_id, media_type, file_name, caption, storage_path, status")
+        .eq("lead_id", leadId),
+    ]);
+    return {
+      lead: throwIfError(leadResult, "Lead não encontrado."),
+      interactions: (throwIfError(interactionResult, "Não foi possível carregar a conversa.") || []).reverse(),
+      messages: throwIfError(messageResult, "Não foi possível carregar os status.") || [],
+      media: throwIfError(mediaResult, "Não foi possível carregar os anexos.") || [],
+    };
+  }
+
+  async function sendWhatsappMessage(leadId, body) {
+    return invokeFunction("corex-whatsapp-send", { lead_id: leadId, body }, "Não foi possível enviar a mensagem.");
+  }
+
+  async function getWhatsappMediaUrl(path) {
+    const result = await client.storage.from("corex-whatsapp-media").createSignedUrl(path, 300);
+    return throwIfError(result, "Não foi possível abrir o anexo.").signedUrl;
+  }
+
+  async function getWhatsappSummary() {
+    return throwIfError(await client.rpc("corex_whatsapp_cost_summary"), "Não foi possível carregar o consumo do WhatsApp.");
+  }
+
+  async function getWhatsappPanel(filters) {
+    return throwIfError(await client.rpc("corex_whatsapp_panel", {
+      p_days: filters.days || null,
+      p_role: filters.role || null,
+      p_class: filters.classId || null,
+    }), "Não foi possível carregar o painel de mensagens.");
+  }
+
+  async function listClasses() {
+    return throwIfError(await client.from("corex_classes").select("id, name, status").order("start_date", { ascending: false }), "Não foi possível carregar as turmas.") || [];
+  }
+
+  async function setWhatsappLimit(limit, blocked) {
+    return throwIfError(await client.rpc("corex_set_whatsapp_limit", { p_limit: limit, p_blocked: blocked }), "Não foi possível salvar o limite.");
+  }
+
+  function subscribeWhatsapp(onChange) {
+    const channel = client
+      .channel("corex-whatsapp-" + Date.now())
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "corex_interactions", filter: "channel=eq.whatsapp" }, (event) => onChange(event.new || {}))
+      .on("postgres_changes", { event: "*", schema: "public", table: "corex_whatsapp_messages" }, (event) => onChange(event.new || {}))
+      .subscribe();
+    return () => client.removeChannel(channel);
+  }
+
   function onAuthStateChange(callback) {
     return client.auth.onAuthStateChange(callback);
   }
@@ -323,6 +393,15 @@
     confirmPayment,
     listPayments,
     getGoalMetrics,
+    listWhatsappConversations,
+    getWhatsappConversation,
+    sendWhatsappMessage,
+    getWhatsappMediaUrl,
+    getWhatsappSummary,
+    getWhatsappPanel,
+    listClasses,
+    setWhatsappLimit,
+    subscribeWhatsapp,
     onAuthStateChange,
   });
 })();
