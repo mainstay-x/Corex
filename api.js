@@ -69,7 +69,7 @@
       const removed = await client.auth.mfa.unenroll({ factorId: factor.id });
       if (removed.error) throw new Error(messageFrom(removed.error, "Não foi possível reiniciar o cadastro do autenticador."));
     }
-    const result = await client.auth.mfa.enroll({ factorType: "totp", friendlyName: "COREX " + Date.now() });
+    const result = await client.auth.mfa.enroll({ factorType: "totp", issuer: "COREX", friendlyName: "COREX " + Date.now() });
     if (result.error) throw new Error(messageFrom(result.error, "Não foi possível iniciar o cadastro do autenticador."));
     const qr = result.data.totp.qr_code || "";
     return {
