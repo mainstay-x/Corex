@@ -3,7 +3,7 @@
 
   const api = window.CorexApi;
   const config = window.COREX_CONFIG;
-  const state = { profile: null, route: "home", routeParam: null, booting: false, leaveHandlers: [], mfa: null };
+  const state = { profile: null, route: "home", routeParam: null, booting: false, leaveHandlers: [], mfa: null, passwordEntered: false };
 
   const elements = {
     loginView: document.getElementById("login-view"),
@@ -100,6 +100,7 @@
     leaveCurrentScreen();
     state.profile = null;
     state.mfa = null;
+    state.passwordEntered = false;
     elements.whatsappCost.hidden = true;
     elements.appView.hidden = true;
     elements.loginView.hidden = false;
@@ -367,6 +368,12 @@
       }
       const assurance = await api.getAssurance();
       if (assurance.currentLevel !== "aal2") {
+        // Sessão guardada sem o código: pede a senha de novo antes do código ou do cadastro.
+        if (!state.passwordEntered) {
+          await api.signOut();
+          showLogin("");
+          return;
+        }
         await showMfa();
         return;
       }
@@ -397,9 +404,11 @@
     if (!elements.loginForm.reportValidity()) return;
     setBusy(elements.loginSubmit, true, "Entrando...");
     try {
+      state.passwordEntered = true;
       await api.signIn(elements.loginEmail.value.trim(), elements.loginPassword.value);
       await loadAuthenticatedApp();
     } catch (error) {
+      state.passwordEntered = false;
       setLoginMessage(error.message || "E-mail ou senha inválidos.");
     } finally {
       setBusy(elements.loginSubmit, false, "Entrar");
