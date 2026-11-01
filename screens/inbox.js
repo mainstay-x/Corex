@@ -105,7 +105,27 @@
       const open = context.make("button", "button button-secondary", "Abrir ficha");
       open.type = "button";
       open.addEventListener("click", () => context.navigate("lead", lead.id));
-      head.append(title, open);
+      const headActions = context.make("div", "inbox-thread-actions");
+      if (window.CorexCopilot && window.CorexCopilot.canUse(context.currentProfile)) {
+        const copilot = context.make("button", "button button-secondary", "Copiloto");
+        copilot.type = "button";
+        copilot.addEventListener("click", () => window.CorexCopilot.open(context, {
+          leadId: lead.id,
+          onUseText: (text) => {
+            const field = threadPane.querySelector("#inbox-message");
+            if (!field || field.disabled) {
+              context.toast("A resposta está bloqueada nesta conversa. Use Copiar.", "error");
+              return;
+            }
+            field.value = text.slice(0, 4096);
+            context.closePanel();
+            field.focus();
+          },
+        }));
+        headActions.appendChild(copilot);
+      }
+      headActions.appendChild(open);
+      head.append(title, headActions);
 
       const byInteraction = new Map();
       data.messages.forEach((message) => {

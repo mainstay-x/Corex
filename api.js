@@ -390,6 +390,18 @@
     return throwIfError(await client.from("corex_classes").select("id, name, status").order("start_date", { ascending: false }), "Não foi possível carregar as turmas.") || [];
   }
 
+  async function suggestCopilot(payload) {
+    return invokeFunction("corex-ai", payload, "O copiloto não respondeu.");
+  }
+
+  async function getAiSummary() {
+    return throwIfError(await client.rpc("corex_ai_summary"), "Não foi possível carregar o consumo do copiloto.");
+  }
+
+  async function setAiLimit(limit, blocked) {
+    return throwIfError(await client.rpc("corex_set_ai_limit", { p_limit: limit, p_blocked: blocked }), "Não foi possível salvar o limite do copiloto.");
+  }
+
   async function setWhatsappLimit(limit, blocked) {
     return throwIfError(await client.rpc("corex_set_whatsapp_limit", { p_limit: limit, p_blocked: blocked }), "Não foi possível salvar o limite.");
   }
@@ -450,6 +462,9 @@
     getWhatsappPanel,
     listClasses,
     setWhatsappLimit,
+    suggestCopilot,
+    getAiSummary,
+    setAiLimit,
     subscribeWhatsapp,
     onAuthStateChange,
   });

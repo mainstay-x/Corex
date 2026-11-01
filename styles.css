@@ -1322,3 +1322,48 @@ textarea:focus {
   color: var(--danger);
   font-weight: 700;
 }
+
+/* Copiloto */
+.copilot-panel {
+  display: grid;
+  gap: 14px;
+}
+.copilot-intro,
+.copilot-quota,
+.copilot-cost {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+.copilot-result {
+  display: grid;
+  gap: 12px;
+}
+.copilot-block {
+  padding: 12px 14px;
+  border: 1px solid #d5dde8;
+  border-radius: var(--radius-sm);
+  background: #fff;
+}
+.copilot-block h4 {
+  margin: 0 0 6px;
+  font-size: 13px;
+  color: #34445a;
+}
+.copilot-text {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.copilot-actions,
+.inbox-thread-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.copilot-actions {
+  margin-top: 10px;
+}
+.copilot-block > .button {
+  margin-top: 10px;
+}

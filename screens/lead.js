@@ -197,6 +197,10 @@
         const conversation = context.make("button", "button button-secondary", "Conversa no WhatsApp"); conversation.type = "button";
         conversation.addEventListener("click", () => context.navigate("inbox", leadId)); actions.appendChild(conversation);
       }
+      if (window.CorexCopilot && window.CorexCopilot.canUse(profile)) {
+        const copilot = context.make("button", "button button-secondary", "Copiloto"); copilot.type = "button";
+        copilot.addEventListener("click", () => window.CorexCopilot.open(context, { leadId, onFollowupCreated: reload })); actions.appendChild(copilot);
+      }
       const managesAll = canManageAll(profile);
       const sdrFlow = data.lead.owner_role === "sdr" || !data.lead.owner_role;
       const canRunSdrFlow = sdrFlow && (managesAll || (profile.role === "sdr" && (!data.lead.owner_id || data.lead.owner_id === profile.user_id)));
