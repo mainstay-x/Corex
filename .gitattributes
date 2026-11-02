@@ -1,0 +1,2 @@
+# O hook roda no bash: fim de linha LF mesmo no Windows.
+.githooks/* text eol=lf

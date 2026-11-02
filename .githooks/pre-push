@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+# Recusa o push se algum commit enviado tiver arquivo fora da lista do site
+# ou conteúdo com cara de segredo ou de dado pessoal.
+# Ativar em cada clone: git config core.hooksPath .githooks
+
+allowed='^(\.gitignore|\.gitattributes|\.githooks/pre-push|CNAME|README\.md|index\.html|config\.js|api\.js|app\.js|styles\.css|whatsapp-cadastro\.html|whatsapp-cadastro\.js|screens/[a-z0-9-]+\.js)$'
+zero=0000000000000000000000000000000000000000
+problems=""
+
+note() { problems="${problems}  $1"$'\n'; }
+
+# Arquivos do commit que contêm o padrão, sem o prefixo "<commit>:".
+files_with() { git grep -lE -e "$2" "$1" -- . ':!.githooks' 2>/dev/null | sed "s/^$1://" | tr '\n' ' '; }
+# Arquivos com mais de $3 ocorrências distintas do padrão.
+files_over() {
+  git grep -oE -e "$2" "$1" -- . ':!.githooks' 2>/dev/null | sed "s/^$1://" | sort -u |
+    awk -F: -v max="$3" '{ n[$1]++ } END { for (f in n) if (n[f] > max) printf "%s ", f }'
+}
+
+# Papel de um JWT (anon, service_role...), lido do payload.
+jwt_role() {
+  local payload
+  payload=$(printf '%s' "$1" | cut -d. -f2 | tr '_-' '/+')
+  while [ $(( ${#payload} % 4 )) -ne 0 ]; do payload="${payload}="; done
+  printf '%s' "$payload" | base64 -d 2>/dev/null | grep -oE '"role" *: *"[^"]*"' | sed -E 's/.*"([^"]*)"$/\1/'
+}
+
+check_commit() {
+  local commit=$1 short found token role
+  short=$(git rev-parse --short "$commit")
+
+  found=$(git ls-tree -r --name-only "$commit" | grep -vE "$allowed" | tr '\n' ' ')
+  [ -n "$found" ] && note "$short: arquivos fora da lista: $found"
+
+  found=$(files_with "$commit" 'sk-(proj-|svcacct-)?[A-Za-z0-9_-]{20,}'); [ -n "$found" ] && note "$short: chave da OpenAI em $found"
+  found=$(files_with "$commit" 'sb_secret_[A-Za-z0-9_-]{10,}'); [ -n "$found" ] && note "$short: chave secreta do Supabase em $found"
+  found=$(files_with "$commit" 'EAA[A-Za-z0-9]{60,}'); [ -n "$found" ] && note "$short: token da Meta em $found"
+  found=$(files_with "$commit" '-----BEGIN [A-Z ]*PRIVATE KEY-----'); [ -n "$found" ] && note "$short: chave privada em $found"
+
+  for token in $(git grep -ohE -e 'eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}' "$commit" -- . ':!.githooks' 2>/dev/null | sort -u); do
+    role=$(jwt_role "$token")
+    [ "$role" != "anon" ] && note "$short: chave JWT com papel '${role:-desconhecido}' (só a anon pode ir ao site) em $(files_with "$commit" "$token")"
+  done
+
+  found=$(files_with "$commit" '[0-9]{3}\.[0-9]{3}\.[0-9]{3}-[0-9]{2}'); [ -n "$found" ] && note "$short: CPF em $found"
+  found=$(files_over "$commit" '\+55[0-9]{10,11}' 2); [ -n "$found" ] && note "$short: lista de telefones em $found"
+  found=$(files_over "$commit" '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}' 2); [ -n "$found" ] && note "$short: lista de e-mails em $found"
+}
+
+while read -r local_ref local_sha remote_ref remote_sha; do
+  [ "$local_sha" = "$zero" ] && continue
+  if [ "$remote_sha" = "$zero" ]; then
+    range=$(git rev-list "$local_sha" --not --remotes)
+  else
+    range=$(git rev-list "$remote_sha..$local_sha")
+  fi
+  for commit in $range; do check_commit "$commit"; done
+done
+
+if [ -n "$problems" ]; then
+  echo "Push recusado. O site é público e estes itens não podem ir para ele:" >&2
+  printf '%s' "$problems" >&2
+  echo "Lista de arquivos permitidos: docs/22-publicacao-site.md" >&2
+  exit 1
+fi
+exit 0

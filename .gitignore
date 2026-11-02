@@ -1,10 +1,21 @@
-# Nunca publicar: dados pessoais, banco, funções e documentação interna.
-private/
-scripts/
-sql/
-supabase/
-docs/
-skills/
-AGENTS.md
-*.zip
-.DS_Store
+# Lista de permitidos: o git ignora tudo, exceto os arquivos do site.
+# Arquivo novo do site entra aqui e em .githooks/pre-push (docs/22-publicacao-site.md).
+/*
+!/.gitignore
+!/.gitattributes
+!/.githooks/
+!/CNAME
+!/README.md
+!/index.html
+!/config.js
+!/api.js
+!/app.js
+!/styles.css
+!/whatsapp-cadastro.html
+!/whatsapp-cadastro.js
+!/screens/
+
+/.githooks/*
+!/.githooks/pre-push
+/screens/*
+!/screens/*.js
