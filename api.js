@@ -239,7 +239,9 @@
   }
 
   async function updateLead(leadId, changes) {
-    return throwIfError(await client.from("corex_leads").update(changes).eq("id", leadId).select("*").single(), "Não foi possível atualizar o lead.");
+    const result = await client.from("corex_leads").update(changes).eq("id", leadId).select("*").single();
+    if (result.error && String(result.error.message).includes("corex_leads_email_uq")) throw new Error("Este e-mail já está cadastrado em outro lead.");
+    return throwIfError(result, "Não foi possível atualizar o lead.");
   }
 
   async function addInteraction(payload) {
