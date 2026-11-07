@@ -16,7 +16,7 @@
   }
 
   function panelForm(context, title, fields, onSubmit) {
-    const form = context.make("form", "panel-form");
+    const form = context.make("form", "panel-form"); ui().blockEnterSubmit(form);
     const section = context.make("section", "form-section"); section.appendChild(context.make("h3", "", title));
     fields.forEach((item) => ui().field(context, section, item.label, item.control));
     const actions = context.make("div", "form-actions");
@@ -45,10 +45,28 @@
 
     const interestCard = context.make("section", "surface-card"); interestCard.appendChild(context.make("h3", "", "Interesses e cursos feitos"));
     if (!data.interests.length) interestCard.appendChild(context.make("p", "", "Nenhum interesse registrado."));
-    data.interests.forEach((item) => interestCard.appendChild(context.make("p", "", ui().courseName(catalog, item.course_id) + " · " + ui().className(catalog, item.class_id))));
+    data.interests.forEach((item) => {
+      interestCard.appendChild(context.make("p", "", ui().courseName(catalog, item.course_id) + " · " + ui().className(catalog, item.class_id)));
+      if (item.notify_next_class) interestCard.appendChild(context.make("span", "badge success", "Avisar 15 dias antes da próxima turma"));
+      if (!editable) return;
+      const toggle = context.make("button", "table-action", item.notify_next_class ? "Não avisar mais" : "Avisar na próxima turma");
+      toggle.type = "button";
+      toggle.addEventListener("click", async () => {
+        toggle.disabled = true;
+        try {
+          await context.api.updateInterest(item.id, { notify_next_class: !item.notify_next_class });
+          ui().store.invalidateLeads();
+          await reload();
+        } catch (error) {
+          toggle.disabled = false;
+          context.toast(error.message, "error");
+        }
+      });
+      interestCard.appendChild(toggle);
+    });
     interestCard.appendChild(context.make("p", "", "Nível: " + String(data.tier.tier || "normal").toUpperCase() + " · " + data.tier.trainings_count + " treinamentos"));
     const addInterest = context.make("button", "button button-secondary", "Adicionar interesse"); addInterest.type = "button";
-    addInterest.addEventListener("click", () => { const course = ui().select("interest-course", catalog.courses.map((item) => ({ value: item.id, label: item.title })), "", true); course.required = true; const klass = ui().select("interest-class", catalog.classes.map((item) => ({ value: item.id, label: item.name })), "", true); context.openPanel("Adicionar interesse", panelForm(context, "Curso e turma", [{ label: "Curso", control: course }, { label: "Turma", control: klass }], async () => { await context.api.addInterest({ lead_id: lead.id, course_id: course.value, class_id: klass.value || null, priority: data.interests.length + 1 }); ui().store.invalidateLeads(); await reload(); })); }); if (editable) interestCard.appendChild(addInterest);
+    addInterest.addEventListener("click", () => { const course = ui().select("interest-course", catalog.courses.map((item) => ({ value: item.id, label: item.title })), "", true); course.required = true; const klass = ui().select("interest-class", catalog.classes.map((item) => ({ value: item.id, label: item.name })), "", true); const notify = ui().select("interest-notify", [{ value: "false", label: "Não" }, { value: "true", label: "Sim" }], "false"); context.openPanel("Adicionar interesse", panelForm(context, "Curso e turma", [{ label: "Curso", control: course }, { label: "Turma", control: klass }, { label: "Avisar 15 dias antes da próxima turma", control: notify }], async () => { await context.api.addInterest({ lead_id: lead.id, course_id: course.value, class_id: klass.value || null, priority: data.interests.length + 1, notify_next_class: notify.value === "true" }); ui().store.invalidateLeads(); await reload(); })); }); if (editable) interestCard.appendChild(addInterest);
     const addCourse = context.make("button", "button button-secondary", "Adicionar curso feito"); addCourse.type = "button";
     addCourse.addEventListener("click", () => {
       const course = ui().select("completed-course", catalog.courses.map((item) => ({ value: item.id, label: item.title })), "", true); course.required = true;
@@ -89,7 +107,7 @@
     add.addEventListener("click", () => {
       const type = ui().select("followup-type", Object.entries(ui().followupLabels).filter(([key]) => key !== "passagem_closer").map(([value, label]) => ({ value, label })), "outro");
       const due = ui().input("followup-due", "datetime-local", ui().localInputValue(ui().addDays(new Date(), 2)), true);
-      const reason = ui().input("followup-reason", "text", "", false);
+      const reason = ui().input("followup-reason", "text", "", true);
       const meetingUrl = ui().input("followup-meeting-url", "url", "", false);
       const platform = ui().select("followup-meeting-platform", [
         { value: "", label: "Não informada" },
@@ -155,6 +173,10 @@
         } catch (_ignored) {}
       }
       if (item.status === "aberto" && canEditLead(context.currentProfile, data.lead)) {
+        const edit = context.make("button", "table-action", "Editar");
+        edit.type = "button";
+        edit.addEventListener("click", () => context.openPanel("Editar retorno", ui().followupEditor(context, item, reload)));
+        card.appendChild(edit);
         const done = context.make("button", "table-action", item.type === "reuniao" ? "Marcar realizada" : "Concluir");
         done.type = "button";
         done.addEventListener("click", async () => {
@@ -182,11 +204,11 @@
     data.objections.forEach((item) => { const card = context.make("article", "surface-card compact-card"); card.append(context.make("span", "badge", item.category), context.make("p", "", item.text || "Sem observação"), context.make("small", "", ui().formatDate(item.created_at, true))); host.appendChild(card); }); if (!data.objections.length) host.appendChild(context.make("div", "empty-state", "Nenhuma objeção registrada.")); return host;
   }
 
-  async function render(context, leadId) {
+  async function render(context, leadId, initialTab) {
     context.clear(context.workspace); context.workspace.appendChild(context.make("div", "loading-state", "Carregando ficha..."));
     try {
       const [data, catalog, visibleLeads] = await Promise.all([context.api.getLead(leadId), ui().store.getCatalog(context.api), ui().store.getLeads(context.api)]);
-      const reload = () => render(context, leadId); context.clear(context.workspace);
+      let activeTab = initialTab || "resumo"; const reload = () => render(context, leadId, activeTab); context.clear(context.workspace);
       const hero = context.make("section", "lead-header surface-card"); const title = context.make("div");
       const ownerLabel = !data.lead.owner_id ? "Sem dono" : data.lead.owner_id === context.currentProfile.user_id ? context.currentProfile.display_name : "Outro responsável";
       title.append(context.make("p", "eyebrow", ui().stageLabels[data.lead.stage] || data.lead.stage), context.make("h2", "", data.lead.name), context.make("p", "", (data.lead.phone || "Sem telefone") + " · nível " + (data.tier.tier || "normal") + " · " + ownerLabel));
@@ -243,8 +265,9 @@
         views.comercial = () => window.CorexCommerce.render(context, data, catalog, reload);
         tabLabels.comercial = "Oferta e pagamento";
       }
-      Object.entries(tabLabels).forEach(([key, label], index) => { const button = context.make("button", "tab-button" + (index === 0 ? " active" : ""), label); button.type = "button"; button.addEventListener("click", () => { tabs.querySelectorAll("button").forEach((item) => item.classList.remove("active")); button.classList.add("active"); context.clear(content); content.appendChild(views[key]()); }); tabs.appendChild(button); });
-      content.appendChild(views.resumo()); context.workspace.append(hero, tabs, content);
+      if (!views[activeTab]) activeTab = "resumo";
+      Object.entries(tabLabels).forEach(([key, label]) => { const button = context.make("button", "tab-button" + (key === activeTab ? " active" : ""), label); button.type = "button"; button.addEventListener("click", () => { activeTab = key; tabs.querySelectorAll("button").forEach((item) => item.classList.remove("active")); button.classList.add("active"); context.clear(content); content.appendChild(views[key]()); }); tabs.appendChild(button); });
+      content.appendChild(views[activeTab]()); context.workspace.append(hero, tabs, content);
     } catch (error) { context.clear(context.workspace); context.workspace.appendChild(context.make("div", "empty-state", error.message)); }
   }
   window.CorexScreens.lead = Object.freeze({ render });

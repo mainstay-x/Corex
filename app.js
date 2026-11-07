@@ -214,6 +214,7 @@
     if (sdrAccess || closerAccess) items.push({ id: "inbox", label: "Inbox", icon: "✉" });
     if (closerAccess) items.push({ id: "opportunities", label: "Oportunidades", icon: "◇" });
     if (sdrAccess || closerAccess) items.push({ id: "followups", label: "Retornos", icon: "◷" });
+    if (sdrAccess || closerAccess || hasPermission(profile, "manage_classes")) items.push({ id: "agenda", label: "Agenda de cursos", icon: "▦" });
     if (billingAccess) items.push({ id: "payments", label: "Pagamentos", icon: "▣" });
     if (sdrAccess || closerAccess || billingAccess) items.push({ id: "messages", label: "Mensagens", icon: "◌" });
     if (sdrAccess) items.push({ id: "goals", label: "Metas", icon: "◇" });
@@ -377,6 +378,7 @@
     else if (state.route === "leads") { setHeader("Leads", "Operação SDR"); window.CorexScreens.leads.render(screenContext()); }
     else if (state.route === "opportunities") { setHeader("Oportunidades", "Operação Closer"); window.CorexScreens.opportunities.render(screenContext()); }
     else if (state.route === "followups") { setHeader("Retornos", state.profile.role === "closer" ? "Operação Closer" : "Operação comercial"); window.CorexScreens.followups.render(screenContext()); }
+    else if (state.route === "agenda") { setHeader("Agenda de cursos", "Academy"); window.CorexScreens.agenda.render(screenContext()); }
     else if (state.route === "payments") { setHeader("Pagamentos", "Controle manual"); window.CorexScreens.payments.render(screenContext()); }
     else if (state.route === "goals") { setHeader("Metas", "Operação SDR"); window.CorexScreens.goals.render(screenContext()); }
     else if (state.route === "inbox") { setHeader("Inbox", "WhatsApp"); window.CorexScreens.inbox.render(screenContext(), state.routeParam); }

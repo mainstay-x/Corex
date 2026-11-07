@@ -263,6 +263,29 @@
     return throwIfError(await client.from("corex_followups").update(changes).eq("id", id).select("*").single(), "Não foi possível atualizar o retorno.");
   }
 
+  async function updateInterest(id, changes) {
+    return throwIfError(await client.from("corex_interests").update(changes).eq("id", id).select("*").single(), "Não foi possível atualizar o interesse.");
+  }
+
+  async function getClassAgenda() {
+    const [classResult, courseResult] = await Promise.all([
+      client.from("corex_classes").select("*").order("start_date", { ascending: true, nullsFirst: false }),
+      client.from("corex_courses").select("id, title, active").order("title"),
+    ]);
+    return {
+      classes: throwIfError(classResult, "Não foi possível carregar as turmas.") || [],
+      courses: throwIfError(courseResult, "Não foi possível carregar os cursos.") || [],
+    };
+  }
+
+  async function createClass(payload) {
+    return throwIfError(await client.from("corex_classes").insert(payload).select("*").single(), "Não foi possível criar a turma.");
+  }
+
+  async function updateClass(id, changes) {
+    return throwIfError(await client.from("corex_classes").update(changes).eq("id", id).select("*").single(), "Não foi possível atualizar a turma.");
+  }
+
   async function addObjection(payload) {
     return throwIfError(await client.from("corex_objections").insert(payload).select("*").single(), "Não foi possível registrar a objeção.");
   }
@@ -448,6 +471,10 @@
     addObjection,
     addCompletedCourse,
     addInterest,
+    updateInterest,
+    getClassAgenda,
+    createClass,
+    updateClass,
     handoffToCloser,
     createOffer,
     markOfferSent,

@@ -55,6 +55,9 @@
     invalidateLeads() {
       this.leads = null;
     },
+    invalidateCatalog() {
+      this.catalog = null;
+    },
   };
 
   function formatDate(value, withTime) {
@@ -174,6 +177,103 @@
     return (catalog.classes.find((item) => item.id === id) || {}).name || "Não definida";
   }
 
+  function blockEnterSubmit(form) {
+    // Enter num campo não salva o formulário: só o botão Salvar salva.
+    form.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" && event.target.tagName === "INPUT") event.preventDefault();
+    });
+  }
+
+  function followupEditor(context, item, onSaved) {
+    const form = context.make("form", "panel-form");
+    blockEnterSubmit(form);
+    const section = context.make("section", "form-section");
+    section.appendChild(context.make("h3", "", "Retorno"));
+    const systemTypes = ["passagem_closer", "sem_resposta", "pagamento"];
+    const locked = Boolean(item.class_id || item.sequence_step) || systemTypes.includes(item.type);
+    const options = Object.entries(followupLabels)
+      .filter(([value]) => value === item.type || !systemTypes.includes(value))
+      .map(([value, label]) => ({ value, label }));
+    const type = select("followup-edit-type", options, item.type);
+    type.disabled = locked;
+    const due = input("followup-edit-due", "datetime-local", localInputValue(item.due_at), true);
+    const reason = input("followup-edit-reason", "text", item.reason || "", true);
+    const meetingUrl = input("followup-edit-url", "url", item.meeting_url || "", false);
+    const platform = select("followup-edit-platform", [
+      { value: "", label: "Não informada" },
+      { value: "google_meet", label: "Google Meet" },
+      { value: "microsoft_teams", label: "Microsoft Teams" },
+      { value: "zoom", label: "Zoom" },
+      { value: "outra", label: "Outra" },
+    ], item.meeting_platform || "");
+    const syncMeeting = () => {
+      meetingUrl.disabled = type.value !== "reuniao";
+      platform.disabled = type.value !== "reuniao";
+    };
+    type.addEventListener("change", syncMeeting);
+    syncMeeting();
+    field(context, section, "Tipo", type);
+    field(context, section, "Data", due);
+    field(context, section, "Motivo", reason);
+    field(context, section, "Link da reunião", meetingUrl);
+    field(context, section, "Plataforma", platform);
+    if (item.class_id) section.appendChild(context.make("p", "", "Aviso de turma: para parar, use Não avisar mais no interesse do lead."));
+
+    const finish = async (changes) => {
+      await context.api.updateFollowup(item.id, changes);
+      store.invalidateLeads();
+      context.closePanel();
+      context.toast("Retorno salvo.", "success");
+      await onSaved();
+    };
+
+    const actions = context.make("div", "form-actions");
+    if (!item.class_id) {
+      const remove = context.make("button", "button button-secondary", "Cancelar retorno");
+      remove.type = "button";
+      remove.addEventListener("click", async () => {
+        if (!window.confirm("Cancelar este retorno?")) return;
+        remove.disabled = true;
+        try {
+          const changes = { status: "cancelado", done_at: new Date().toISOString() };
+          if (item.type === "reuniao") changes.meeting_status = "cancelada";
+          await finish(changes);
+        } catch (error) {
+          remove.disabled = false;
+          context.toast(error.message, "error");
+        }
+      });
+      actions.appendChild(remove);
+    }
+    const save = context.make("button", "button button-primary", "Salvar");
+    save.type = "submit";
+    actions.appendChild(save);
+    form.append(section, actions);
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      if (!form.reportValidity()) return;
+      const changes = { due_at: new Date(due.value).toISOString(), reason: reason.value.trim() };
+      if (type.value !== item.type) changes.type = type.value;
+      if (type.value === "reuniao") {
+        changes.meeting_url = meetingUrl.value.trim() || null;
+        changes.meeting_platform = platform.value || null;
+        if (item.type !== "reuniao") changes.meeting_status = "agendada";
+        else if (due.value !== localInputValue(item.due_at)) changes.meeting_status = "remarcada";
+      } else if (item.type === "reuniao") {
+        Object.assign(changes, { meeting_status: null, meeting_url: null, meeting_platform: null });
+      }
+      save.disabled = true;
+      try {
+        await finish(changes);
+      } catch (error) {
+        save.disabled = false;
+        context.toast(error.message, "error");
+      }
+    });
+    return form;
+  }
+
   window.CorexSdr = Object.freeze({
     store,
     stageLabels,
@@ -192,5 +292,7 @@
     field,
     courseName,
     className,
+    blockEnterSubmit,
+    followupEditor,
   });
 })();

@@ -145,27 +145,10 @@
             actions.appendChild(done);
           }
 
-          const reschedule = context.make("button", "table-action", "Reagendar");
-          reschedule.type = "button";
-          reschedule.addEventListener("click", () => {
-            const form = context.make("form", "panel-form");
-            const due = ui.input("queue-due", "datetime-local", ui.localInputValue(item.due_at), true);
-            ui.field(context, form, "Nova data", due);
-            const save = context.make("button", "button button-primary", "Salvar");
-            save.type = "submit";
-            form.appendChild(save);
-            form.addEventListener("submit", async (event) => {
-              event.preventDefault();
-              const changes = { due_at: new Date(due.value).toISOString() };
-              if (item.type === "reuniao") Object.assign(changes, { meeting_status: "remarcada", status: "aberto", done_at: null });
-              await context.api.updateFollowup(item.id, changes);
-              context.closePanel();
-              ui.store.invalidateLeads();
-              await render(context);
-            });
-            context.openPanel(item.type === "reuniao" ? "Remarcar reunião" : "Reagendar retorno", form);
-          });
-          actions.appendChild(reschedule);
+          const edit = context.make("button", "table-action", "Editar");
+          edit.type = "button";
+          edit.addEventListener("click", () => context.openPanel("Editar retorno", ui.followupEditor(context, item, () => render(context))));
+          actions.appendChild(edit);
           row.appendChild(actions);
           body.appendChild(row);
         });
