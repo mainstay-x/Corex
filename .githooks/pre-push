@@ -3,7 +3,7 @@
 # ou conteúdo com cara de segredo ou de dado pessoal.
 # Ativar em cada clone: git config core.hooksPath .githooks
 
-allowed='^(\.gitignore|\.gitattributes|\.githooks/pre-push|CNAME|README\.md|index\.html|config\.js|api\.js|app\.js|styles\.css|whatsapp-cadastro\.html|whatsapp-cadastro\.js|screens/[a-z0-9-]+\.js)$'
+allowed='^(\.gitignore|\.gitattributes|\.githooks/pre-push|CNAME|README\.md|index\.html|config\.js|api\.js|app\.js|styles\.css|whatsapp-cadastro\.html|whatsapp-cadastro\.js|privacidade\.html|screens/[a-z0-9-]+\.js)$'
 zero=0000000000000000000000000000000000000000
 problems=""
 
