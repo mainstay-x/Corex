@@ -38,12 +38,37 @@
     return host;
   }
 
+  const copilotKey = "corex.inbox.copilotCollapsed";
+
+  function copilotCollapsed() {
+    try {
+      return window.localStorage.getItem(copilotKey) === "1";
+    } catch (_error) {
+      return false;
+    }
+  }
+
+  function setCopilotCollapsed(value) {
+    try {
+      window.localStorage.setItem(copilotKey, value ? "1" : "0");
+    } catch (_error) {
+      // Sem armazenamento local, o copiloto apenas volta aberto na próxima visita.
+    }
+  }
+
   async function render(context, leadId) {
     const state = { conversations: [], selected: leadId || null, search: "", timer: null, active: true, unsubscribe: null };
+    const closeButton = document.getElementById("context-close");
+    const onPanelClose = () => {
+      setCopilotCollapsed(true);
+      updateCopilotToggle();
+    };
+    if (closeButton) closeButton.addEventListener("click", onPanelClose);
     context.onLeave(() => {
       state.active = false;
       window.clearTimeout(state.timer);
       if (state.unsubscribe) state.unsubscribe();
+      if (closeButton) closeButton.removeEventListener("click", onPanelClose);
     });
     context.clear(context.workspace);
     context.workspace.appendChild(context.make("div", "loading-state", "Carregando conversas..."));
@@ -90,6 +115,7 @@
     }
 
     function renderThread(data) {
+      if (!state.active) return;
       // Atualizações em tempo real não apagam o texto que está sendo digitado.
       const previous = threadPane.querySelector("textarea");
       const draft = previous && state.draftLead === data.lead.id ? previous.value : "";
@@ -106,22 +132,19 @@
       open.type = "button";
       open.addEventListener("click", () => context.navigate("lead", lead.id));
       const headActions = context.make("div", "inbox-thread-actions");
-      if (window.CorexCopilot && window.CorexCopilot.canUse(context.currentProfile)) {
-        const copilot = context.make("button", "button button-secondary", "Copiloto");
+      if (canUseCopilot()) {
+        const copilot = context.make("button", "button button-secondary copilot-toggle", "");
         copilot.type = "button";
-        copilot.addEventListener("click", () => window.CorexCopilot.open(context, {
-          leadId: lead.id,
-          onUseText: (text) => {
-            const field = threadPane.querySelector("#inbox-message");
-            if (!field || field.disabled) {
-              context.toast("A resposta está bloqueada nesta conversa. Use Copiar.", "error");
-              return;
-            }
-            field.value = text.slice(0, 4096);
+        copilot.addEventListener("click", () => {
+          if (copilotOpenFor(lead.id)) {
+            setCopilotCollapsed(true);
             context.closePanel();
-            field.focus();
-          },
-        }));
+          } else {
+            setCopilotCollapsed(false);
+            openCopilot(lead.id);
+          }
+          updateCopilotToggle();
+        });
         headActions.appendChild(copilot);
       }
       headActions.appendChild(open);
@@ -199,6 +222,46 @@
 
       threadPane.append(head, messages, composer);
       messages.scrollTop = messages.scrollHeight;
+      // Copiloto fica aberto ao lado da conversa, salvo se o operador recolheu.
+      if (canUseCopilot() && !copilotCollapsed() && wideScreen() && !copilotOpenFor(lead.id)) openCopilot(lead.id);
+      updateCopilotToggle();
+    }
+
+    function canUseCopilot() {
+      return Boolean(window.CorexCopilot && window.CorexCopilot.canUse(context.currentProfile));
+    }
+
+    function wideScreen() {
+      return !window.matchMedia || window.matchMedia("(min-width: 781px)").matches;
+    }
+
+    function copilotOpenFor(id) {
+      const panel = document.getElementById("context-panel");
+      const node = document.querySelector("#context-content .copilot-panel");
+      return Boolean(panel && !panel.hidden && node && node.dataset.leadId === String(id));
+    }
+
+    function openCopilot(id) {
+      window.CorexCopilot.open(context, {
+        leadId: id,
+        onUseText: (text) => {
+          const field = threadPane.querySelector("#inbox-message");
+          if (!field || field.disabled) {
+            context.toast("A resposta está bloqueada nesta conversa. Use Copiar.", "error");
+            return;
+          }
+          field.value = text.slice(0, 4096);
+          field.focus();
+        },
+      });
+    }
+
+    function updateCopilotToggle() {
+      const button = threadPane.querySelector(".copilot-toggle");
+      if (!button) return;
+      const isOpen = copilotOpenFor(state.selected);
+      button.textContent = isOpen ? "Recolher copiloto" : "Abrir copiloto";
+      button.setAttribute("aria-expanded", isOpen ? "true" : "false");
     }
 
     async function refreshThread() {
