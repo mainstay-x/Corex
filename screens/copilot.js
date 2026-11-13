@@ -48,6 +48,7 @@
     const leadId = options.leadId;
     const profile = context.currentProfile;
     const root = context.make("div", "copilot-panel");
+    root.dataset.leadId = String(leadId);
     root.appendChild(context.make("p", "copilot-intro", "Sugestões a partir do histórico do lead. Revise antes de enviar: nada sai sem você."));
 
     const form = context.make("form", "panel-form");
