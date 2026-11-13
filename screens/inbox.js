@@ -147,6 +147,17 @@
         });
         headActions.appendChild(copilot);
       }
+      if (context.api.getWhatsappAiState) {
+        const jonasBadge = context.make("span", "badge neutral inbox-jonas", "Jonas...");
+        jonasBadge.style.display = "inline-block";
+        jonasBadge.style.marginTop = "6px";
+        title.appendChild(jonasBadge);
+        const jonasButton = context.make("button", "button button-secondary", "Jonas");
+        jonasButton.type = "button";
+        jonasButton.disabled = true;
+        headActions.appendChild(jonasButton);
+        loadJonas(lead.id, jonasBadge, jonasButton);
+      }
       headActions.appendChild(open);
       head.append(title, headActions);
 
@@ -208,6 +219,9 @@
         textarea.disabled = true;
         try {
           await context.api.sendWhatsappMessage(lead.id, body);
+          if (context.api.setWhatsappAiState) {
+            context.api.setWhatsappAiState(lead.id, "pausado", "Equipe respondeu pela Inbox").catch(() => {});
+          }
           textarea.value = "";
           await refreshThread();
           await loadList();
@@ -225,6 +239,42 @@
       // Copiloto fica aberto ao lado da conversa, salvo se o operador recolheu.
       if (canUseCopilot() && !copilotCollapsed() && wideScreen() && !copilotOpenFor(lead.id)) openCopilot(lead.id);
       updateCopilotToggle();
+    }
+
+    // Jonas: atendimento automático do lead pelo WhatsApp.
+    function jonasView(current) {
+      if (!current || current.mode === "ativo") return { text: "Jonas atendendo", tone: "success", button: "Pausar Jonas", next: "pausado" };
+      if (current.mode === "passado") return { text: "Passado para o Caio", tone: "warning", button: "Devolver para Jonas", next: "ativo" };
+      return { text: "Jonas pausado", tone: "neutral", button: "Devolver para Jonas", next: "ativo" };
+    }
+
+    async function loadJonas(id, badge, button) {
+      let current = null;
+      try {
+        current = await context.api.getWhatsappAiState(id);
+      } catch (_error) {
+        badge.remove();
+        button.remove();
+        return;
+      }
+      if (!state.active || state.selected !== id) return;
+      const view = jonasView(current);
+      badge.textContent = view.text;
+      badge.className = "badge " + view.tone + " inbox-jonas";
+      badge.title = current && current.summary ? current.summary : (current && current.reason ? current.reason : "");
+      button.textContent = view.button;
+      button.disabled = false;
+      button.onclick = async () => {
+        button.disabled = true;
+        try {
+          await context.api.setWhatsappAiState(id, view.next, view.next === "pausado" ? "Pausado na Inbox" : "Devolvido na Inbox");
+          context.toast(view.next === "pausado" ? "Jonas pausado nesta conversa." : "Jonas volta a atender esta conversa.", "success");
+          await loadJonas(id, badge, button);
+        } catch (error) {
+          button.disabled = false;
+          context.toast(error.message, "error");
+        }
+      };
     }
 
     function canUseCopilot() {
