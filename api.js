@@ -394,6 +394,15 @@
     return invokeFunction("corex-whatsapp-send", { lead_id: leadId, body }, "Não foi possível enviar a mensagem.");
   }
 
+  async function getWhatsappAiState(leadId) {
+    const rows = throwIfError(await client.rpc("corex_whatsapp_ai_get", { p_lead: leadId }), "Não foi possível carregar o atendimento do Jonas.") || [];
+    return rows[0] || null;
+  }
+
+  async function setWhatsappAiState(leadId, mode, reason) {
+    return throwIfError(await client.rpc("corex_whatsapp_ai_set", { p_lead: leadId, p_mode: mode, p_reason: reason || null }), "Não foi possível alterar o atendimento do Jonas.");
+  }
+
   async function getWhatsappMediaUrl(path) {
     const result = await client.storage.from("corex-whatsapp-media").createSignedUrl(path, 300);
     return throwIfError(result, "Não foi possível abrir o anexo.").signedUrl;
@@ -486,6 +495,8 @@
     listWhatsappConversations,
     getWhatsappConversation,
     sendWhatsappMessage,
+    getWhatsappAiState,
+    setWhatsappAiState,
     getWhatsappMediaUrl,
     getWhatsappSummary,
     getWhatsappPanel,
