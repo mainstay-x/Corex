@@ -160,16 +160,18 @@
     const leads = throwIfError(leadResult, "Não foi possível carregar os leads.") || [];
     const ids = leads.map((lead) => lead.id);
     if (!ids.length) return [];
-    const [interestResult, followupResult, interactionResult, tierResult] = await Promise.all([
+    const [interestResult, followupResult, interactionResult, tierResult, courseResult] = await Promise.all([
       client.from("corex_interests").select("*").in("lead_id", ids).order("priority"),
       client.from("corex_followups").select("*").in("lead_id", ids).eq("status", "aberto").order("due_at"),
       client.from("corex_interactions").select("lead_id, occurred_at, direction").in("lead_id", ids).order("occurred_at", { ascending: false }),
       client.from("corex_lead_tier").select("lead_id, trainings_count, tier").in("lead_id", ids),
+      client.from("corex_lead_courses").select("lead_id, course_id, completed_at").in("lead_id", ids),
     ]);
     const interests = throwIfError(interestResult, "Não foi possível carregar os interesses.") || [];
     const followups = throwIfError(followupResult, "Não foi possível carregar os retornos.") || [];
     const interactions = throwIfError(interactionResult, "Não foi possível carregar as interações.") || [];
     const tiers = throwIfError(tierResult, "Não foi possível carregar os níveis.") || [];
+    const completedCourses = throwIfError(courseResult, "Não foi possível carregar os cursos feitos.") || [];
     return leads.map((lead) => ({
       ...lead,
       interests: interests.filter((item) => item.lead_id === lead.id),
@@ -177,6 +179,7 @@
       last_interaction: interactions.find((item) => item.lead_id === lead.id) || null,
       has_outbound_interaction: interactions.some((item) => item.lead_id === lead.id && item.direction === "out"),
       tier: tiers.find((item) => item.lead_id === lead.id) || { tier: "normal", trainings_count: 0 },
+      completed_courses: completedCourses.filter((item) => item.lead_id === lead.id),
     }));
   }
 

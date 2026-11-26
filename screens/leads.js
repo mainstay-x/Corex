@@ -2,6 +2,15 @@
   "use strict";
   window.CorexScreens = window.CorexScreens || {};
 
+  function leadOrigin(lead) {
+    const country = String(lead.country || "").trim().toLowerCase();
+    if (country && country !== "não informado" && country !== "nao informado") return country === "br" || country === "brasil" ? "brasileiro" : "estrangeiro";
+    const phone = String(lead.phone || "").replace(/[^0-9+]/g, "");
+    if (phone.startsWith("+55")) return "brasileiro";
+    if (phone.startsWith("+")) return "estrangeiro";
+    return "indefinido";
+  }
+
   function quickLeadForm(context, catalog, leads) {
     const ui = window.CorexSdr;
     const form = context.make("form", "panel-form");
@@ -87,7 +96,22 @@
       const source = ui.select("filter-source", Object.entries(ui.sourceLabels).map(([value, label]) => ({ value, label })), "", true);
       const temperature = ui.select("filter-temperature", ["frio", "morno", "quente"].map((value) => ({ value, label: value })), "", true);
       const followup = ui.select("filter-followup", [{ value: "vencido", label: "Vencido" }, { value: "hoje", label: "Hoje" }, { value: "sem", label: "Sem retorno" }], "", true);
-      filters.append(search, stage, classFilter, source, temperature, followup);
+      const origin = ui.select("filter-origin", [{ value: "brasileiro", label: "Brasileiros" }, { value: "estrangeiro", label: "Estrangeiros" }, { value: "indefinido", label: "Origem não identificada" }], "", true);
+      origin.title = "Origem do lead";
+      filters.append(search, stage, classFilter, source, temperature, followup, origin);
+      const courseState = new Map();
+      const courseFilter = context.make("div", "course-filter surface-card");
+      courseFilter.appendChild(context.make("span", "course-filter-label", "Cursos feitos:"));
+      catalog.courses.forEach((course) => {
+        const chip = context.make("button", "course-chip", course.title); chip.type = "button"; chip.title = "Clique para alternar: fez, não fez, sem filtro";
+        chip.addEventListener("click", () => {
+          const current = courseState.get(course.id); const next = !current ? "fez" : current === "fez" ? "nao" : null;
+          if (next) courseState.set(course.id, next); else courseState.delete(course.id);
+          chip.dataset.state = next || ""; chip.textContent = (next === "fez" ? "✓ " : next === "nao" ? "✕ " : "") + course.title; draw();
+        });
+        courseFilter.appendChild(chip);
+      });
+      const resultCount = context.make("p", "course-filter-count", "");
       const tableHost = context.make("div");
 
       function draw() {
@@ -96,28 +120,32 @@
           const next = lead.open_followups[0] || null;
           const matchesText = !needle || [lead.name, lead.phone, lead.email].some((value) => String(value || "").toLowerCase().includes(needle));
           const matchesFollowup = !followup.value || (followup.value === "sem" && !next) || (followup.value === "vencido" && next && new Date(next.due_at) < now) || (followup.value === "hoje" && next && ui.isSameSaoPauloDay(next.due_at, now));
-          return matchesText && (!stage.value || lead.stage === stage.value) && (!classFilter.value || lead.interests.some((item) => item.class_id === classFilter.value)) && (!source.value || lead.source === source.value) && (!temperature.value || lead.temperature === temperature.value) && matchesFollowup;
+          const matchesOrigin = !origin.value || leadOrigin(lead) === origin.value;
+          const done = new Set((lead.completed_courses || []).map((item) => item.course_id));
+          for (const [courseId, wanted] of courseState) { if ((wanted === "fez") !== done.has(courseId)) return false; }
+          return matchesOrigin && matchesText && (!stage.value || lead.stage === stage.value) && (!classFilter.value || lead.interests.some((item) => item.class_id === classFilter.value)) && (!source.value || lead.source === source.value) && (!temperature.value || lead.temperature === temperature.value) && matchesFollowup;
         }).sort((a, b) => {
           const ad = a.open_followups[0] ? new Date(a.open_followups[0].due_at).getTime() : Infinity;
           const bd = b.open_followups[0] ? new Date(b.open_followups[0].due_at).getTime() : Infinity;
           return ad - bd;
         });
+        resultCount.textContent = filtered.length === 1 ? "1 lead" : filtered.length + " leads";
         const shell = context.make("div", "table-shell");
         if (!filtered.length) { shell.appendChild(context.make("div", "empty-state", "Nenhum lead encontrado.")); tableHost.appendChild(shell); return; }
         const table = context.make("table", "data-table"); const head = document.createElement("thead"); const hr = document.createElement("tr");
-        ["Nome", "Etapa", "Curso / turma", "Fonte", "Temperatura", "Próximo retorno", "Sem contato"].forEach((label) => hr.appendChild(context.make("th", "", label)));
+        ["Nome", "Etapa", "Curso / turma", "Cursos feitos", "Fonte", "Temperatura", "Próximo retorno", "Sem contato"].forEach((label) => hr.appendChild(context.make("th", "", label)));
         head.appendChild(hr); const body = document.createElement("tbody");
         filtered.forEach((lead) => {
           const row = document.createElement("tr"); row.className = "clickable-row"; row.tabIndex = 0;
           const interest = lead.interests[0]; const next = lead.open_followups[0];
-          const cells = [lead.name, ui.stageLabels[lead.stage] || lead.stage, interest ? ui.courseName(catalog, interest.course_id) + " · " + ui.className(catalog, interest.class_id) : "Não definido", ui.sourceLabels[lead.source] || lead.source, lead.temperature || "Não definida", next ? ui.formatDate(next.due_at, true) : activeStages.has(lead.stage) ? "Sem próximo passo" : "Nenhum retorno", lead.last_interaction ? Math.max(0, Math.floor((Date.now() - new Date(lead.last_interaction.occurred_at)) / 86400000)) + " dias" : "Sem contato"];
-          cells.forEach((value, index) => { const cell = document.createElement("td"); if (index === 5 && ((activeStages.has(lead.stage) && !next) || (next && new Date(next.due_at) < now))) cell.appendChild(context.make("span", "badge " + (next ? "warning" : "neutral"), value)); else cell.textContent = value; row.appendChild(cell); });
+          const cells = [lead.name, ui.stageLabels[lead.stage] || lead.stage, interest ? ui.courseName(catalog, interest.course_id) + " · " + ui.className(catalog, interest.class_id) : "Não definido", (lead.completed_courses || []).map((item) => ui.courseName(catalog, item.course_id)).join(", ") || "Nenhum", ui.sourceLabels[lead.source] || lead.source, lead.temperature || "Não definida", next ? ui.formatDate(next.due_at, true) : activeStages.has(lead.stage) ? "Sem próximo passo" : "Nenhum retorno", lead.last_interaction ? Math.max(0, Math.floor((Date.now() - new Date(lead.last_interaction.occurred_at)) / 86400000)) + " dias" : "Sem contato"];
+          cells.forEach((value, index) => { const cell = document.createElement("td"); if (index === 6 && ((activeStages.has(lead.stage) && !next) || (next && new Date(next.due_at) < now))) cell.appendChild(context.make("span", "badge " + (next ? "warning" : "neutral"), value)); else cell.textContent = value; row.appendChild(cell); });
           const open = () => context.navigate("lead", lead.id); row.addEventListener("click", open); row.addEventListener("keydown", (event) => { if (event.key === "Enter") open(); }); body.appendChild(row);
         });
         table.append(head, body); shell.appendChild(table); tableHost.appendChild(shell);
       }
-      [search, stage, classFilter, source, temperature, followup].forEach((control) => control.addEventListener("input", draw));
-      context.workspace.append(toolbar, filters, tableHost); draw();
+      [search, stage, classFilter, source, temperature, followup, origin].forEach((control) => control.addEventListener("input", draw));
+      context.workspace.append(toolbar, filters, courseFilter, resultCount, tableHost); draw();
     } catch (error) { context.clear(context.workspace); context.workspace.appendChild(context.make("div", "empty-state", error.message)); }
   }
   window.CorexScreens.leads = Object.freeze({ render });
