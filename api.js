@@ -497,6 +497,25 @@
     return throwIfError(await client.from("corex_board_viewports").upsert({ board_id: boardId, x: viewport.x, y: viewport.y, zoom: viewport.zoom }, { onConflict: "board_id,user_id" }), "Não foi possível salvar a posição do quadro.");
   }
 
+  const BOARD_IMAGE_BUCKET = "corex-board-images";
+
+  async function uploadBoardImage(boardId, file) {
+    const ext = ({ "image/png": "png", "image/jpeg": "jpg", "image/gif": "gif", "image/svg+xml": "svg", "image/webp": "webp" })[file.type] || "img";
+    const id = window.crypto && window.crypto.randomUUID ? window.crypto.randomUUID() : String(Date.now()) + Math.random().toString(16).slice(2);
+    const path = boardId + "/" + id + "." + ext;
+    const result = await client.storage.from(BOARD_IMAGE_BUCKET).upload(path, file, { contentType: file.type, upsert: false });
+    if (result.error) throw new Error("Não foi possível enviar a imagem.");
+    return path;
+  }
+
+  async function signBoardImages(paths) {
+    const result = await client.storage.from(BOARD_IMAGE_BUCKET).createSignedUrls(paths, 60 * 60 * 12);
+    if (result.error) throw new Error("Não foi possível carregar as imagens do quadro.");
+    const urls = {};
+    (result.data || []).forEach((item) => { if (item.signedUrl && item.path) urls[item.path] = item.signedUrl; });
+    return urls;
+  }
+
   function onAuthStateChange(callback) {
     return client.auth.onAuthStateChange(callback);
   }
@@ -561,6 +580,8 @@
     getBoard,
     saveBoardObjects,
     saveBoardViewport,
+    uploadBoardImage,
+    signBoardImages,
     onAuthStateChange,
   });
 })();

@@ -35,12 +35,37 @@
   const TOOLS = [
     { id: "select", label: "Selecionar", key: "V", icon: "⬉" },
     { id: "hand", label: "Mover", key: "H", icon: "✋" },
+    { id: "pen", label: "Desenhar", key: "P", icon: "✎" },
     { id: "sticky", label: "Nota adesiva", key: "N", icon: "▤" },
     { id: "shape", label: "Formas", key: "R", icon: "▭" },
+    { id: "connector", label: "Conexão", key: "C", icon: "↗" },
     { id: "text", label: "Texto", key: "T", icon: "T" },
+    { id: "image", label: "Imagem", key: "I", icon: "🖼" },
+    { id: "stamp", label: "Carimbo", key: "S", icon: "★" },
+  ];
+  const MORE_TOOLS = [
     { id: "highlight", label: "Marca-texto", key: "M", icon: "🖍" },
     { id: "eraser", label: "Borracha", key: "E", icon: "⌫" },
   ];
+  const PEN_COLORS = [
+    { id: "#0d1b2e", label: "Preto" },
+    { id: "#0878e8", label: "Azul" },
+    { id: "#e03131", label: "Vermelho" },
+    { id: "#2f9e44", label: "Verde" },
+    { id: "#f08c00", label: "Laranja" },
+    { id: "#9c36b5", label: "Roxo" },
+  ];
+  const PEN_WIDTHS = [2, 4, 8];
+  const STAMPS = [
+    { id: "like", label: "Curtir", glyph: "👍", color: "#0878e8" },
+    { id: "check", label: "Check", glyph: "✓", color: "#2f9e44" },
+    { id: "x", label: "X", glyph: "✕", color: "#e03131" },
+    { id: "star", label: "Estrela", glyph: "★", color: "#f59f00" },
+    { id: "question", label: "Interrogação", glyph: "?", color: "#7048e8" },
+    { id: "exclamation", label: "Exclamação", glyph: "!", color: "#f76707" },
+  ];
+  const IMAGE_TYPES = ["image/png", "image/jpeg", "image/gif", "image/svg+xml", "image/webp"];
+  const IMAGE_MAX_BYTES = 10 * 1024 * 1024;
   const SYNC_LABELS = { saved: "Salvo", saving: "Salvando…", offline: "Offline", error: "Erro ao salvar" };
 
   let clipboard = null;
@@ -252,6 +277,11 @@
     this.tool = "select";
     this.shapeKind = "rect";
     this.highlightColor = "amarelo";
+    this.penColor = PEN_COLORS[0].id;
+    this.penWidth = 4;
+    this.stampKind = "like";
+    this.imageUrls = new Map();
+    this.imagePending = new Set();
     this.history = [];
     this.future = [];
     this.nodes = new Map();
@@ -338,11 +368,8 @@
     TOOLS.forEach((tool) => {
       if (!this.canEdit && tool.id !== "select" && tool.id !== "hand") return;
       const button = this.iconButton(tool.icon, tool.label + " (" + tool.key + ")", () => {
-        if (tool.id === "shape") {
-          const wasOpen = this.tool === "shape" && !this.shapeMenu.hidden;
-          this.setTool("shape");
-          this.shapeMenu.hidden = wasOpen;
-        } else this.setTool(tool.id);
+        if (tool.id === "image") { this.setTool("select"); this.pickImage(); return; }
+        this.setTool(tool.id);
       });
       button.classList.add("wb-tool");
       button.dataset.tool = tool.id;
@@ -350,28 +377,32 @@
       if (tool.id === "sticky") this.enableStickyDrag(button);
       this.toolbar.appendChild(button);
     });
-    this.shapeMenu = make("div", "wb-panel wb-shape-menu");
-    this.shapeMenu.hidden = true;
-    SHAPES.forEach((shape) => {
-      const button = this.iconButton(shape.icon, shape.label, () => {
-        this.shapeKind = shape.id;
-        this.shapeMenu.hidden = true;
-        this.setTool("shape");
-      });
-      button.dataset.shape = shape.id;
-      this.shapeMenu.appendChild(button);
+    this.moreButton = this.iconButton("⋯", "Mais ferramentas", () => { this.moreMenu.hidden = !this.moreMenu.hidden; });
+    this.moreButton.classList.add("wb-tool");
+    this.moreMenu = make("div", "wb-panel wb-menu wb-more-menu");
+    this.moreMenu.hidden = true;
+    MORE_TOOLS.forEach((tool) => {
+      const item = make("button", "wb-menu-item");
+      item.type = "button";
+      item.dataset.tool = tool.id;
+      item.append(make("span", "", tool.icon + "  " + tool.label), make("kbd", "", tool.key));
+      item.addEventListener("click", () => { this.moreMenu.hidden = true; this.setTool(tool.id); });
+      this.moreMenu.appendChild(item);
     });
-
-    this.highlightMenu = make("div", "wb-panel wb-shape-menu wb-highlight-menu");
-    this.highlightMenu.hidden = true;
-    HIGHLIGHT_COLORS.forEach((color) => {
-      const swatch = make("button", "wb-swatch");
-      swatch.type = "button";
-      swatch.title = color.label;
-      swatch.dataset.color = color.id;
-      swatch.style.background = color.value;
-      swatch.addEventListener("click", () => { this.highlightColor = color.id; this.updateTools(); });
-      this.highlightMenu.appendChild(swatch);
+    if (this.canEdit) this.toolbar.appendChild(this.moreButton);
+    this.toolOptions = make("div", "wb-panel wb-tool-options");
+    this.toolOptions.hidden = true;
+    this.fileInput = make("input", "");
+    this.fileInput.type = "file";
+    this.fileInput.accept = IMAGE_TYPES.join(",");
+    this.fileInput.multiple = true;
+    this.fileInput.hidden = true;
+    this.fileInput.addEventListener("change", () => {
+      const files = [...this.fileInput.files];
+      this.fileInput.value = "";
+      const rect = this.stage.getBoundingClientRect();
+      const center = this.toWorld(rect.left + rect.width / 2, rect.top + rect.height / 2);
+      this.insertImages(files, center);
     });
 
     const zoomPanel = make("div", "wb-panel wb-zoom");
@@ -398,7 +429,7 @@
     this.popover = make("div", "wb-panel wb-popover");
     this.popover.hidden = true;
 
-    this.root.append(header, historyPanel, this.toolbar, this.shapeMenu, this.highlightMenu, zoomPanel, this.zoomMenu, this.propsBar, this.contextMenu, this.popover);
+    this.root.append(header, historyPanel, this.toolbar, this.toolOptions, this.moreMenu, this.fileInput, zoomPanel, this.zoomMenu, this.propsBar, this.contextMenu, this.popover);
   };
 
   Board.prototype.iconButton = function (icon, title, handler) {
@@ -425,6 +456,20 @@
     this.on(this.stage, "contextmenu", (e) => this.onContextMenu(e));
     this.on(document, "keydown", (e) => this.onKeyDown(e));
     this.on(document, "keyup", (e) => this.onKeyUp(e));
+    this.on(document, "paste", (e) => this.onPaste(e));
+    this.on(this.stage, "dragover", (e) => {
+      if (!this.canEdit || !e.dataTransfer || ![...e.dataTransfer.types].includes("Files")) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "copy";
+      this.stage.classList.add("is-dropping");
+    });
+    this.on(this.stage, "dragleave", () => this.stage.classList.remove("is-dropping"));
+    this.on(this.stage, "drop", (e) => {
+      this.stage.classList.remove("is-dropping");
+      if (!this.canEdit || !e.dataTransfer || !e.dataTransfer.files.length) return;
+      e.preventDefault();
+      this.insertImages([...e.dataTransfer.files], this.toWorld(e.clientX, e.clientY));
+    });
     this.on(window, "online", () => { this.setSync(this.dirty.size ? "saving" : "saved"); this.scheduleSave(0); });
     this.on(window, "offline", () => this.setSync("offline"));
     this.on(window, "resize", () => this.updateView());
@@ -433,7 +478,7 @@
       if (!this.zoomMenu.contains(e.target) && e.target !== this.zoomLabel) this.zoomMenu.hidden = true;
       if (!this.contextMenu.contains(e.target)) this.contextMenu.hidden = true;
       if (!this.popover.contains(e.target) && !this.propsBar.contains(e.target)) this.popover.hidden = true;
-      if (!this.shapeMenu.contains(e.target) && !(e.target.closest && e.target.closest('[data-tool="shape"]'))) this.shapeMenu.hidden = true;
+      if (!this.moreMenu.contains(e.target) && e.target !== this.moreButton) this.moreMenu.hidden = true;
     });
     this.renderAll();
     this.updateView();
@@ -558,7 +603,7 @@
     if (!this.canEdit && tool !== "select" && tool !== "hand") return;
     this.finishEditing();
     this.tool = tool;
-    this.shapeMenu.hidden = true;
+    this.moreMenu.hidden = true;
     if (tool !== "select") this.setSelection([]);
     this.updateTools();
   };
@@ -567,10 +612,58 @@
     this.toolButtons.forEach((button, id) => button.classList.toggle("active", id === this.tool));
     const shapeButton = this.toolButtons.get("shape");
     if (shapeButton) shapeButton.textContent = SHAPES.find((s) => s.id === this.shapeKind).icon;
-    this.shapeMenu.querySelectorAll("[data-shape]").forEach((b) => b.classList.toggle("active", b.dataset.shape === this.shapeKind));
-    this.highlightMenu.hidden = this.tool !== "highlight";
-    this.highlightMenu.querySelectorAll("[data-color]").forEach((b) => b.classList.toggle("active", b.dataset.color === this.highlightColor));
+    const moreActive = MORE_TOOLS.some((t) => t.id === this.tool);
+    this.moreButton.classList.toggle("active", moreActive);
+    if (moreActive) this.moreButton.textContent = MORE_TOOLS.find((t) => t.id === this.tool).icon;
+    else this.moreButton.textContent = "⋯";
+    this.moreMenu.querySelectorAll("[data-tool]").forEach((b) => b.classList.toggle("active", b.dataset.tool === this.tool));
+    this.renderToolOptions();
     this.stage.dataset.tool = this.spaceDown ? "hand" : this.tool;
+  };
+
+  Board.prototype.renderToolOptions = function () {
+    const panel = this.toolOptions;
+    panel.textContent = "";
+    const swatch = (value, label, active, onClick) => {
+      const b = this.make("button", "wb-swatch" + (active ? " active" : ""));
+      b.type = "button";
+      b.title = label;
+      b.style.background = value;
+      b.addEventListener("click", onClick);
+      panel.appendChild(b);
+    };
+    if (this.tool === "shape") {
+      SHAPES.forEach((shape) => {
+        const b = this.iconButton(shape.icon, shape.label, () => { this.shapeKind = shape.id; this.updateTools(); });
+        if (shape.id === this.shapeKind) b.classList.add("active");
+        panel.appendChild(b);
+      });
+    } else if (this.tool === "highlight") {
+      HIGHLIGHT_COLORS.forEach((c) => swatch(c.value, c.label, c.id === this.highlightColor, () => { this.highlightColor = c.id; this.updateTools(); }));
+    } else if (this.tool === "pen") {
+      PEN_COLORS.forEach((c) => swatch(c.id, c.label, c.id === this.penColor, () => { this.penColor = c.id; this.updateTools(); }));
+      panel.appendChild(this.make("span", "wb-sep"));
+      PEN_WIDTHS.forEach((w) => {
+        const b = this.iconButton("", "Espessura " + w, () => { this.penWidth = w; this.updateTools(); });
+        const dot = this.make("span", "wb-width-dot");
+        dot.style.width = w + 4 + "px";
+        dot.style.height = w + 4 + "px";
+        b.appendChild(dot);
+        if (w === this.penWidth) b.classList.add("active");
+        panel.appendChild(b);
+      });
+    } else if (this.tool === "stamp") {
+      STAMPS.forEach((st) => {
+        const b = this.iconButton(st.glyph, st.label, () => { this.stampKind = st.id; this.updateTools(); });
+        b.style.color = st.color;
+        if (st.id === this.stampKind) b.classList.add("active");
+        panel.appendChild(b);
+      });
+    } else {
+      panel.hidden = true;
+      return;
+    }
+    panel.hidden = false;
   };
 
   Board.prototype.enableStickyDrag = function (button) {
@@ -672,11 +765,12 @@
 
   Board.prototype.beginChange = function (ids) {
     const before = new Map();
-    ids.forEach((id) => before.set(id, clone(this.objects.get(id) || null)));
+    this.withConnectors(ids).forEach((id) => before.set(id, clone(this.objects.get(id) || null)));
     return { before };
   };
 
   Board.prototype.commitChange = function (entry, mergeKey) {
+    this.syncConnectors(entry.before.keys());
     const after = new Map();
     let changed = false;
     entry.before.forEach((value, id) => {
@@ -871,6 +965,9 @@
     else if (obj.type === "shape") this.renderShape(node, obj);
     else if (obj.type === "text") this.renderText(node, obj);
     else if (obj.type === "draw") this.renderDraw(node, obj);
+    else if (obj.type === "stamp") this.renderStamp(node, obj);
+    else if (obj.type === "image") this.renderImage(node, obj);
+    else if (obj.type === "connector") this.renderConnector(node, obj);
     if (hidden) node.style.display = "none";
   };
 
@@ -935,16 +1032,22 @@
     return d + " L" + last[0] + " " + last[1];
   };
 
+  Board.prototype.drawColor = function (props) {
+    if (props.highlight) return (HIGHLIGHT_COLORS.find((c) => c.id === props.color) || HIGHLIGHT_COLORS[0]).value;
+    return props.color || PEN_COLORS[0].id;
+  };
+
   Board.prototype.renderDraw = function (node, obj) {
     const p = obj.props;
-    const color = HIGHLIGHT_COLORS.find((c) => c.id === p.color) || HIGHLIGHT_COLORS[0];
+    node.classList.toggle("is-highlight", Boolean(p.highlight));
     const svg = svgEl("svg", { width: "100%", height: "100%", viewBox: "0 0 " + (p.vw || obj.width) + " " + (p.vh || obj.height), preserveAspectRatio: "none" });
-    svg.appendChild(svgEl("path", { d: this.strokePath(p.points || []), fill: "none", stroke: color.value, "stroke-width": p.strokeWidth || HIGHLIGHT_WIDTH, "stroke-linecap": "round", "stroke-linejoin": "round" }));
+    svg.appendChild(svgEl("path", { d: this.strokePath(p.points || []), fill: "none", stroke: this.drawColor(p), "stroke-width": p.strokeWidth || HIGHLIGHT_WIDTH, "stroke-linecap": "round", "stroke-linejoin": "round" }));
     node.appendChild(svg);
   };
 
-  Board.prototype.createHighlight = function (points) {
-    const half = HIGHLIGHT_WIDTH / 2;
+  Board.prototype.createStroke = function (points, highlight) {
+    const width = highlight ? HIGHLIGHT_WIDTH : this.penWidth;
+    const half = width / 2 + 2;
     const xs = points.map((pt) => pt[0]);
     const ys = points.map((pt) => pt[1]);
     const x = Math.min(...xs) - half;
@@ -952,7 +1055,10 @@
     const w = Math.max(...xs) - x + half;
     const h = Math.max(...ys) - y + half;
     const rel = points.map((pt) => [Math.round((pt[0] - x) * 10) / 10, Math.round((pt[1] - y) * 10) / 10]);
-    const obj = this.baseObject("draw", x, y, w, h, { points: rel, vw: w, vh: h, color: this.highlightColor, strokeWidth: HIGHLIGHT_WIDTH, highlight: true });
+    const props = highlight
+      ? { points: rel, vw: w, vh: h, color: this.highlightColor, strokeWidth: HIGHLIGHT_WIDTH, highlight: true }
+      : { points: rel, vw: w, vh: h, color: this.penColor, strokeWidth: width };
+    const obj = this.baseObject("draw", x, y, w, h, props);
     this.addObjects([obj], false);
   };
 
@@ -1031,11 +1137,12 @@
       overlay.appendChild(box);
     }
     if (this.gesture && this.gesture.type === "draw") {
-      const color = HIGHLIGHT_COLORS.find((c) => c.id === this.highlightColor) || HIGHLIGHT_COLORS[0];
+      const hl = this.gesture.highlight;
+      const color = hl ? this.drawColor({ highlight: true, color: this.highlightColor }) : this.penColor;
       const rect = this.stage.getBoundingClientRect();
-      const svg = svgEl("svg", { class: "wb-draw-preview", width: rect.width, height: rect.height });
+      const svg = svgEl("svg", { class: "wb-draw-preview" + (hl ? " is-highlight" : ""), width: rect.width, height: rect.height });
       const pts = this.gesture.points.map((pt) => { const sp = this.toScreen(pt[0], pt[1]); return [sp.x, sp.y]; });
-      svg.appendChild(svgEl("path", { d: this.strokePath(pts), fill: "none", stroke: color.value, "stroke-width": HIGHLIGHT_WIDTH * this.view.zoom, "stroke-linecap": "round", "stroke-linejoin": "round" }));
+      svg.appendChild(svgEl("path", { d: this.strokePath(pts), fill: "none", stroke: color, "stroke-width": (hl ? HIGHLIGHT_WIDTH : this.penWidth) * this.view.zoom, "stroke-linecap": "round", "stroke-linejoin": "round" }));
       overlay.appendChild(svg);
     }
     this.guides.forEach((g) => {
@@ -1055,8 +1162,47 @@
       }
       overlay.appendChild(line);
     });
+    const g = this.gesture;
+    if (g && (g.type === "create-connector" || g.type === "connector-end") && g.target) {
+      const b = objectBounds(g.target);
+      const a = this.toScreen(b.x, b.y);
+      const box = this.make("div", "wb-attach-target");
+      box.style.left = a.x + "px";
+      box.style.top = a.y + "px";
+      box.style.width = b.width * this.view.zoom + "px";
+      box.style.height = b.height * this.view.zoom + "px";
+      overlay.appendChild(box);
+    }
+    if (g && g.type === "create-connector") {
+      const rect = this.stage.getBoundingClientRect();
+      const svg = svgEl("svg", { class: "wb-draw-preview", width: rect.width, height: rect.height });
+      const s0 = this.resolveEnd(g.start);
+      const a = this.toScreen(s0.x, s0.y);
+      const endPoint = g.target ? this.anchorFor(g.target, g.current) : g.current;
+      const b = this.toScreen(endPoint.x, endPoint.y);
+      svg.appendChild(svgEl("path", { d: "M" + a.x + " " + a.y + " L" + b.x + " " + b.y, stroke: "#0878e8", "stroke-width": 2, "stroke-dasharray": "6 4", fill: "none" }));
+      overlay.appendChild(svg);
+    }
     if (!selected.length) { this.propsBar.hidden = true; return; }
     const editable = this.canEdit && selected.every((o) => !o.locked);
+    if (selected.length === 1 && selected[0].type === "connector") {
+      const conn = selected[0];
+      ["start", "end"].forEach((key) => {
+        const r = this.resolveEnd(conn.props[key]);
+        const sp = this.toScreen(r.x, r.y);
+        const handle = this.make("div", "wb-handle wb-conn-handle" + (conn.props[key].id ? " is-attached" : "") + (editable && !this.editing ? "" : " is-static"));
+        handle.dataset.handle = key === "start" ? "cstart" : "cend";
+        handle.style.left = sp.x - 6 + "px";
+        handle.style.top = sp.y - 6 + "px";
+        overlay.appendChild(handle);
+      });
+      const b = objectBounds(conn);
+      const c = this.toScreen(b.x + b.width / 2, b.y + b.height / 2);
+      const frame = { cx: c.x, cy: c.y, w: b.width * this.view.zoom, h: b.height * this.view.zoom, rotation: 0 };
+      this.selectionFrame = frame;
+      this.renderPropsBar(selected, frame);
+      return;
+    }
     let frame;
     if (selected.length === 1) {
       const obj = selected[0];
@@ -1145,7 +1291,28 @@
         });
         sep();
       }
-      if (types.size === 1 && types.has("draw")) {
+      if (types.size === 1 && types.has("draw") && selected.every((o) => !o.props.highlight)) {
+        PEN_COLORS.forEach((color) => {
+          const swatch = this.make("button", "wb-swatch" + (selected.every((o) => o.props.color === color.id) ? " active" : ""));
+          swatch.type = "button";
+          swatch.title = color.label;
+          swatch.style.background = color.id;
+          swatch.addEventListener("click", () => this.updateProps({ color: color.id }));
+          add(swatch);
+        });
+        sep();
+        PEN_WIDTHS.forEach((w) => {
+          const b = this.iconButton("", "Espessura " + w, () => this.updateProps({ strokeWidth: w }));
+          const dot = this.make("span", "wb-width-dot");
+          dot.style.width = w + 4 + "px";
+          dot.style.height = w + 4 + "px";
+          b.appendChild(dot);
+          if (selected.every((o) => Number(o.props.strokeWidth) === w)) b.classList.add("active");
+          add(b);
+        });
+        sep();
+      }
+      if (types.size === 1 && types.has("draw") && selected.every((o) => o.props.highlight)) {
         HIGHLIGHT_COLORS.forEach((color) => {
           const swatch = this.make("button", "wb-swatch" + (selected.every((o) => o.props.color === color.id) ? " active" : ""));
           swatch.type = "button";
@@ -1184,6 +1351,26 @@
         if (first.italic) italic.classList.add("active");
         add(bold);
         add(italic);
+        sep();
+      }
+      if (types.size === 1 && types.has("connector")) {
+        const first = selected[0].props;
+        [["straight", "╱", "Reto"], ["curved", "∿", "Curvo"], ["orthogonal", "⌐", "Ortogonal"]].forEach(([id, icon, label]) => {
+          const b = this.iconButton(icon, "Traçado " + label.toLowerCase(), () => this.updateProps({ routing: id }));
+          if ((first.routing || "straight") === id) b.classList.add("active");
+          add(b);
+        });
+        add(this.popoverButton("⇢", "Pontas e espessura", () => this.connectorPicker()));
+        add(this.colorButton("Cor", first.color || "#0d1b2e", "color"));
+        sep();
+      }
+      if (types.size === 1 && types.has("stamp")) {
+        STAMPS.forEach((st) => {
+          const b = this.iconButton(st.glyph, st.label, () => this.updateProps({ icon: st.id }));
+          b.style.color = st.color;
+          if (selected.every((o) => o.props.icon === st.id)) b.classList.add("active");
+          add(b);
+        });
         sep();
       }
       add(this.iconButton("⧉", "Duplicar (Ctrl+D)", () => this.duplicate()));
@@ -1309,10 +1496,20 @@
 
   Board.prototype.cloneObjects = function (list, offset) {
     const groupMap = new Map();
+    const idMap = new Map(list.map((o) => [o.id, uuid()]));
     let z = this.maxZ();
     return list.slice().sort((a, b) => a.zIndex - b.zIndex).map((src) => {
       const copy = clone(src);
-      copy.id = uuid();
+      copy.id = idMap.get(src.id);
+      if (copy.type === "connector") {
+        ["start", "end"].forEach((key) => {
+          const ep = copy.props[key];
+          if (ep.id && idMap.has(ep.id)) ep.id = idMap.get(ep.id);
+          else { ep.id = null; ep.side = null; }
+          ep.x += offset;
+          ep.y += offset;
+        });
+      }
       copy.x += offset;
       copy.y += offset;
       copy.zIndex = ++z;
@@ -1393,7 +1590,7 @@
     const targets = this.editableSelection();
     if (!targets.length) return;
     const entry = this.beginChange(targets.map((o) => o.id));
-    targets.forEach((o) => { o.x += dx; o.y += dy; });
+    targets.forEach((o) => { o.x += dx; o.y += dy; this.shiftFreeEnds(o, dx, dy); });
     this.commitChange(entry, "nudge:" + targets.map((o) => o.id).join(","));
   };
 
@@ -1413,7 +1610,8 @@
     let el;
     if (obj.type === "sticky") el = node.querySelector(".wb-sticky-text");
     else if (obj.type === "shape") el = node.querySelector(".wb-shape-text");
-    else el = node.querySelector(".wb-text-content");
+    else if (obj.type === "connector") el = node.querySelector(".wb-connector-label");
+    else if (obj.type === "text") el = node.querySelector(".wb-text-content");
     if (!el) return;
     this.editing = { id, entry, el };
     node.classList.add("is-editing");
@@ -1449,7 +1647,8 @@
     el.contentEditable = "false";
     if (!obj) return;
     const value = el.innerText.replace(/\n$/, "");
-    obj.props.text = value;
+    if (obj.type === "connector") obj.props.label = value.trim();
+    else obj.props.text = value;
     if (obj.type === "text" && !value.trim()) {
       const existed = entry.before.get(id);
       this.objects.delete(id);
@@ -1468,6 +1667,302 @@
     this.commitChange(entry);
     window.getSelection().removeAllRanges();
     this.stage.focus({ preventScroll: true });
+  };
+
+  // Carimbo
+
+  Board.prototype.createStamp = function (cx, cy) {
+    const obj = this.baseObject("stamp", cx - 32, cy - 32, 64, 64, { icon: this.stampKind });
+    this.addObjects([obj], true);
+    this.setTool("select");
+    this.setSelection([obj.id]);
+  };
+
+  Board.prototype.renderStamp = function (node, obj) {
+    const stamp = STAMPS.find((st) => st.id === obj.props.icon) || STAMPS[0];
+    node.style.setProperty("--stamp-color", stamp.color);
+    const glyph = this.make("span", "wb-stamp-glyph", stamp.glyph);
+    glyph.style.fontSize = Math.min(obj.width, obj.height) * 0.52 + "px";
+    node.appendChild(glyph);
+  };
+
+  // Imagem
+
+  Board.prototype.pickImage = function () {
+    if (!this.canEdit) return;
+    this.fileInput.click();
+  };
+
+  Board.prototype.renderImage = function (node, obj) {
+    const img = this.make("img", "wb-image-img");
+    img.alt = obj.props.name || "Imagem";
+    img.draggable = false;
+    img.dataset.path = obj.props.path || "";
+    const url = this.imageUrls.get(obj.props.path);
+    if (url) img.src = url;
+    else this.requestImageUrl(obj.props.path);
+    node.appendChild(img);
+  };
+
+  Board.prototype.requestImageUrl = function (path) {
+    if (!path || this.imagePending.has(path)) return;
+    this.imagePending.add(path);
+    window.clearTimeout(this.imageTimer);
+    this.imageTimer = window.setTimeout(async () => {
+      const paths = [...this.imagePending].filter((p) => !this.imageUrls.has(p));
+      this.imagePending.clear();
+      if (!paths.length) return;
+      try {
+        const urls = await this.api.signBoardImages(paths);
+        Object.entries(urls).forEach(([p, url]) => {
+          this.imageUrls.set(p, url);
+          this.world.querySelectorAll("img.wb-image-img").forEach((img) => { if (img.dataset.path === p) img.src = url; });
+        });
+      } catch (_error) {
+        // A imagem fica sem pré-visualização até a próxima abertura do quadro.
+      }
+    }, 30);
+  };
+
+  Board.prototype.imageSize = function (file) {
+    return new Promise((resolve) => {
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => { resolve({ width: img.naturalWidth || 300, height: img.naturalHeight || 300, url }); };
+      img.onerror = () => resolve({ width: 300, height: 300, url });
+      img.src = url;
+    });
+  };
+
+  Board.prototype.insertImages = async function (files, point) {
+    if (!this.canEdit || !files.length) return;
+    const valid = [];
+    files.forEach((file) => {
+      if (!IMAGE_TYPES.includes(file.type)) this.o.toast("Formato não aceito: " + file.name + ". Use PNG, JPG, GIF, SVG ou WEBP.", "error");
+      else if (file.size > IMAGE_MAX_BYTES) this.o.toast("A imagem " + file.name + " passa de 10 MB.", "error");
+      else valid.push(file);
+    });
+    if (!valid.length) return;
+    this.o.toast(valid.length === 1 ? "Enviando imagem…" : "Enviando " + valid.length + " imagens…");
+    const created = [];
+    for (let i = 0; i < valid.length; i += 1) {
+      const file = valid[i];
+      try {
+        const size = await this.imageSize(file);
+        const path = await this.api.uploadBoardImage(this.boardId, file);
+        this.imageUrls.set(path, size.url);
+        const scale = Math.min(1, 480 / size.width, 480 / size.height);
+        const w = Math.max(16, size.width * scale);
+        const h = Math.max(16, size.height * scale);
+        const offset = i * 24;
+        const obj = this.baseObject("image", point.x - w / 2 + offset, point.y - h / 2 + offset, w, h, { path, name: file.name, naturalWidth: size.width, naturalHeight: size.height });
+        created.push(obj);
+      } catch (error) {
+        this.o.toast(error.message || "Não foi possível enviar a imagem.", "error");
+      }
+    }
+    if (created.length) {
+      this.addObjects(created, true);
+      this.setTool("select");
+      this.setSelection(created.map((o) => o.id));
+    }
+  };
+
+  Board.prototype.onPaste = function (e) {
+    if (!this.root.isConnected || this.editing || !this.canEdit) return;
+    const target = e.target;
+    if (target && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName))) return;
+    if (document.activeElement && document.activeElement !== document.body && !this.root.contains(document.activeElement)) return;
+    this.pasteHandled = true;
+    const files = [...((e.clipboardData && e.clipboardData.files) || [])].filter((f) => f.type.startsWith("image/"));
+    e.preventDefault();
+    if (files.length) {
+      const rect = this.stage.getBoundingClientRect();
+      this.insertImages(files, this.toWorld(rect.left + rect.width / 2, rect.top + rect.height / 2));
+      return;
+    }
+    this.paste();
+  };
+
+  // Conector
+
+  Board.prototype.withConnectors = function (ids) {
+    const list = [...ids];
+    const set = new Set(list);
+    this.objects.forEach((obj) => {
+      if (obj.type !== "connector" || set.has(obj.id)) return;
+      if ((obj.props.start && set.has(obj.props.start.id)) || (obj.props.end && set.has(obj.props.end.id))) { set.add(obj.id); list.push(obj.id); }
+    });
+    return list;
+  };
+
+  Board.prototype.isAttachable = function (obj) {
+    return obj && obj.type !== "connector" && obj.type !== "draw";
+  };
+
+  Board.prototype.attachTargetAt = function (clientX, clientY, excludeId) {
+    const els = document.elementsFromPoint(clientX, clientY);
+    for (const el of els) {
+      const node = el.closest && el.closest(".wb-object");
+      if (!node || !this.world.contains(node)) continue;
+      const obj = this.objects.get(node.dataset.id);
+      if (this.isAttachable(obj) && obj.id !== excludeId) return obj;
+    }
+    return null;
+  };
+
+  Board.prototype.sidePoint = function (obj, side) {
+    const cx = obj.x + obj.width / 2;
+    const cy = obj.y + obj.height / 2;
+    const local = side === "top" ? [cx, obj.y] : side === "bottom" ? [cx, obj.y + obj.height] : side === "left" ? [obj.x, cy] : [obj.x + obj.width, cy];
+    const normalLocal = side === "top" ? [0, -1] : side === "bottom" ? [0, 1] : side === "left" ? [-1, 0] : [1, 0];
+    const p = rotatePoint(local[0], local[1], cx, cy, obj.rotation || 0);
+    const n = rotatePoint(normalLocal[0], normalLocal[1], 0, 0, obj.rotation || 0);
+    return { x: p.x, y: p.y, nx: n.x, ny: n.y };
+  };
+
+  Board.prototype.anchorFor = function (obj, point) {
+    let best = null;
+    ["top", "right", "bottom", "left"].forEach((side) => {
+      const sp = this.sidePoint(obj, side);
+      const d = Math.hypot(sp.x - point.x, sp.y - point.y);
+      if (!best || d < best.d) best = { d, side, x: sp.x, y: sp.y };
+    });
+    return { id: obj.id, side: best.side, x: best.x, y: best.y };
+  };
+
+  Board.prototype.resolveEnd = function (ep) {
+    const obj = ep && ep.id ? this.objects.get(ep.id) : null;
+    if (obj) return this.sidePoint(obj, ep.side || "right");
+    return { x: ep.x, y: ep.y, nx: 0, ny: 0 };
+  };
+
+  Board.prototype.shiftFreeEnds = function (obj, dx, dy) {
+    if (obj.type !== "connector") return;
+    const props = clone(obj.props);
+    ["start", "end"].forEach((key) => { if (!props[key].id) { props[key].x += dx; props[key].y += dy; } });
+    obj.props = props;
+  };
+
+  Board.prototype.updateConnectorGeometry = function (conn) {
+    const props = conn.props;
+    let changed = false;
+    ["start", "end"].forEach((key) => {
+      const ep = props[key];
+      if (ep.id && !this.objects.has(ep.id)) { ep.id = null; ep.side = null; changed = true; }
+      const r = this.resolveEnd(ep);
+      if (Math.abs(r.x - ep.x) > 0.01 || Math.abs(r.y - ep.y) > 0.01) { ep.x = r.x; ep.y = r.y; changed = true; }
+    });
+    const pad = 24 + (props.strokeWidth || 2) * 2;
+    const x = Math.min(props.start.x, props.end.x) - pad;
+    const y = Math.min(props.start.y, props.end.y) - pad;
+    const w = Math.abs(props.start.x - props.end.x) + pad * 2;
+    const h = Math.abs(props.start.y - props.end.y) + pad * 2;
+    if (Math.abs(conn.x - x) > 0.01 || Math.abs(conn.y - y) > 0.01 || Math.abs(conn.width - w) > 0.01 || Math.abs(conn.height - h) > 0.01) changed = true;
+    conn.x = x; conn.y = y; conn.width = w; conn.height = h; conn.rotation = 0;
+    return changed;
+  };
+
+  Board.prototype.syncConnectors = function (ids, render) {
+    for (const id of ids) {
+      const obj = this.objects.get(id);
+      if (!obj || obj.type !== "connector") continue;
+      obj.props = clone(obj.props);
+      this.updateConnectorGeometry(obj);
+      if (render) this.renderObject(obj);
+    }
+  };
+
+  Board.prototype.createConnector = function (start, end) {
+    const props = { start: clone(start), end: clone(end), routing: "straight", startHead: "none", endHead: "arrow", color: "#0d1b2e", strokeWidth: 2, label: "" };
+    const obj = this.baseObject("connector", 0, 0, 1, 1, props);
+    this.updateConnectorGeometry(obj);
+    this.addObjects([obj], true);
+    this.setTool("select");
+    this.setSelection([obj.id]);
+  };
+
+  Board.prototype.connectorPath = function (props, ox, oy) {
+    const a = this.resolveEnd(props.start);
+    const b = this.resolveEnd(props.end);
+    const sx = a.x - ox; const sy = a.y - oy; const ex = b.x - ox; const ey = b.y - oy;
+    const dist = Math.hypot(ex - sx, ey - sy) || 1;
+    const dirOf = (r, fromX, fromY, toX, toY) => (r.nx || r.ny ? { x: r.nx, y: r.ny } : { x: (toX - fromX) / dist, y: (toY - fromY) / dist });
+    const ns = dirOf(a, sx, sy, ex, ey);
+    const ne = dirOf(b, ex, ey, sx, sy);
+    if (props.routing === "curved") {
+      const k = Math.max(40, dist * 0.4);
+      return "M" + sx + " " + sy + " C" + (sx + ns.x * k) + " " + (sy + ns.y * k) + " " + (ex + ne.x * k) + " " + (ey + ne.y * k) + " " + ex + " " + ey;
+    }
+    if (props.routing === "orthogonal") {
+      const horizontal = a.nx || a.ny ? Math.abs(ns.x) >= Math.abs(ns.y) : Math.abs(ex - sx) >= Math.abs(ey - sy);
+      if (horizontal) {
+        const mx = (sx + ex) / 2;
+        return "M" + sx + " " + sy + " H" + mx + " V" + ey + " H" + ex;
+      }
+      const my = (sy + ey) / 2;
+      return "M" + sx + " " + sy + " V" + my + " H" + ex + " V" + ey;
+    }
+    return "M" + sx + " " + sy + " L" + ex + " " + ey;
+  };
+
+  Board.prototype.renderConnector = function (node, obj) {
+    const p = obj.props;
+    const sw = Number(p.strokeWidth) || 2;
+    const color = p.color || "#0d1b2e";
+    const svg = svgEl("svg", { class: "wb-connector-svg", width: obj.width, height: obj.height });
+    const defs = svgEl("defs");
+    const marker = (id, kind) => {
+      const m = svgEl("marker", { id, viewBox: "0 0 10 10", markerWidth: 4, markerHeight: 4, orient: "auto-start-reverse", markerUnits: "strokeWidth", refX: kind === "arrow" ? 8 : 5, refY: 5 });
+      if (kind === "arrow") m.appendChild(svgEl("path", { d: "M0,0 L10,5 L0,10 z", fill: color }));
+      else m.appendChild(svgEl("circle", { cx: 5, cy: 5, r: 4, fill: color }));
+      defs.appendChild(m);
+      return "url(#" + id + ")";
+    };
+    const d = this.connectorPath(p, obj.x, obj.y);
+    const line = svgEl("path", { d, fill: "none", stroke: color, "stroke-width": sw, "stroke-linecap": "round", "stroke-linejoin": "round", class: "wb-connector-line" });
+    if (p.startHead && p.startHead !== "none") line.setAttribute("marker-start", marker("wbm-" + obj.id + "-s", p.startHead));
+    if (p.endHead && p.endHead !== "none") line.setAttribute("marker-end", marker("wbm-" + obj.id + "-e", p.endHead));
+    const hit = svgEl("path", { d, fill: "none", stroke: "transparent", "stroke-width": Math.max(14, sw + 10), class: "wb-connector-hit" });
+    svg.append(defs, line, hit);
+    node.appendChild(svg);
+    const label = this.make("div", "wb-connector-label");
+    label.textContent = p.label || "";
+    node.appendChild(label);
+    let mid = { x: (p.start.x + p.end.x) / 2 - obj.x, y: (p.start.y + p.end.y) / 2 - obj.y };
+    try {
+      const total = line.getTotalLength();
+      if (total) mid = line.getPointAtLength(total / 2);
+    } catch (_e) {
+      // Sem geometria calculada, o rótulo fica no ponto médio entre as pontas.
+    }
+    label.style.left = mid.x + "px";
+    label.style.top = mid.y + "px";
+  };
+
+  Board.prototype.connectorPicker = function () {
+    const first = this.selectedObjects()[0].props;
+    const heads = [["none", "Nenhuma"], ["arrow", "Seta"], ["circle", "Círculo"]];
+    const row = (title, prop) => {
+      const r = this.make("div", "wb-popover-row");
+      heads.forEach(([id, label]) => {
+        const b = this.make("button", "wb-chip" + ((first[prop] || "none") === id ? " active" : ""), label);
+        b.type = "button";
+        b.addEventListener("click", () => { this.popover.hidden = true; this.updateProps({ [prop]: id }); });
+        r.appendChild(b);
+      });
+      this.popover.append(this.make("p", "wb-popover-title", title), r);
+    };
+    row("Ponta inicial", "startHead");
+    row("Ponta final", "endHead");
+    const widths = this.make("div", "wb-popover-row");
+    [1, 2, 4, 6].forEach((w) => {
+      const b = this.make("button", "wb-chip" + (Number(first.strokeWidth) === w ? " active" : ""), w + " px");
+      b.type = "button";
+      b.addEventListener("click", () => { this.popover.hidden = true; this.updateProps({ strokeWidth: w }); });
+      widths.appendChild(b);
+    });
+    this.popover.append(this.make("p", "wb-popover-title", "Espessura"), widths);
   };
 
   // Pointer handling
@@ -1515,8 +2010,24 @@
       this.eraseAt(e.clientX, e.clientY);
       return;
     }
-    if (this.tool === "highlight") {
-      this.gesture = { type: "draw", points: [[point.x, point.y]], pointerId: e.pointerId };
+    if (this.tool === "stamp") {
+      this.createStamp(point.x, point.y);
+      return;
+    }
+    if (this.tool === "connector") {
+      const target = this.attachTargetAt(e.clientX, e.clientY, null);
+      this.gesture = { type: "create-connector", start: target ? this.anchorFor(target, point) : { id: null, side: null, x: point.x, y: point.y }, current: point, target: null, pointerId: e.pointerId, startClient: { x: e.clientX, y: e.clientY } };
+      this.renderOverlay();
+      return;
+    }
+    if (handleEl && this.canEdit && (handleEl.dataset.handle === "cstart" || handleEl.dataset.handle === "cend")) {
+      const conn = this.selectedObjects()[0];
+      if (!conn || conn.type !== "connector" || conn.locked) return;
+      this.gesture = { type: "connector-end", id: conn.id, key: handleEl.dataset.handle === "cstart" ? "start" : "end", entry: this.beginChange([conn.id]), target: null, pointerId: e.pointerId };
+      return;
+    }
+    if (this.tool === "highlight" || this.tool === "pen") {
+      this.gesture = { type: "draw", highlight: this.tool === "highlight", points: [[point.x, point.y]], pointerId: e.pointerId };
       this.renderOverlay();
       return;
     }
@@ -1626,8 +2137,27 @@
         const obj = this.objects.get(id);
         obj.x = orig.x + dx;
         obj.y = orig.y + dy;
+        if (obj.type === "connector") {
+          obj.props = clone(orig.props);
+          this.shiftFreeEnds(obj, dx, dy);
+        }
         this.renderObject(obj);
       });
+      this.syncConnectors(g.entry.before.keys(), true);
+      this.renderOverlay();
+      return;
+    }
+    if (g.type === "create-connector") {
+      g.current = point;
+      g.target = this.attachTargetAt(e.clientX, e.clientY, g.start.id);
+      this.renderOverlay();
+      return;
+    }
+    if (g.type === "connector-end") {
+      const conn = this.objects.get(g.id);
+      g.target = this.attachTargetAt(e.clientX, e.clientY, conn.props[g.key === "start" ? "end" : "start"].id);
+      conn.props = Object.assign({}, conn.props, { [g.key]: g.target ? this.anchorFor(g.target, point) : { id: null, side: null, x: point.x, y: point.y } });
+      this.syncConnectors([conn.id], true);
       this.renderOverlay();
       return;
     }
@@ -1636,6 +2166,17 @@
       let delta = ((angle - g.startAngle) * 180) / Math.PI;
       g.originals.forEach((orig, id) => {
         const obj = this.objects.get(id);
+        if (obj.type === "connector") {
+          const props = clone(orig.props);
+          ["start", "end"].forEach((key) => {
+            if (props[key].id) return;
+            const r = rotatePoint(props[key].x, props[key].y, g.center.x, g.center.y, e.shiftKey ? Math.round(delta / 15) * 15 : delta);
+            props[key].x = r.x;
+            props[key].y = r.y;
+          });
+          obj.props = props;
+          return;
+        }
         let rotation = (orig.rotation || 0) + delta;
         if (e.shiftKey) rotation = Math.round(rotation / 15) * 15;
         rotation = ((rotation % 360) + 360) % 360;
@@ -1647,11 +2188,13 @@
         obj.rotation = Math.abs(rotation) < 0.01 ? 0 : rotation;
         this.renderObject(obj);
       });
+      this.syncConnectors(g.entry.before.keys(), true);
       this.renderOverlay();
       return;
     }
     if (g.type === "resize") {
       this.applyResize(g, point, e.shiftKey);
+      this.syncConnectors(g.entry.before.keys(), true);
       this.renderOverlay();
     }
   };
@@ -1671,7 +2214,7 @@
       if (h.includes("e")) right = Math.max(local.x, left + minSize);
       if (h.includes("n")) top = Math.min(local.y, bottom - minSize);
       if (h.includes("s")) bottom = Math.max(local.y, top + minSize);
-      const ratioLocked = keepRatio || obj.type === "sticky";
+      const ratioLocked = keepRatio || obj.type === "sticky" || obj.type === "stamp" || obj.type === "image";
       if (ratioLocked && h.length === 2 && obj.type !== "text") {
         const ratio = orig.width / orig.height;
         let w = right - left; let hh = bottom - top;
@@ -1713,11 +2256,21 @@
     }
     g.originals.forEach((orig, id) => {
       const obj = this.objects.get(id);
+      if (obj.type === "connector") {
+        const props = clone(orig.props);
+        ["start", "end"].forEach((key) => {
+          if (props[key].id) return;
+          props[key].x = left + (props[key].x - b.x) * sx;
+          props[key].y = top + (props[key].y - b.y) * sy;
+        });
+        obj.props = props;
+        return;
+      }
       const cx = orig.x + orig.width / 2;
       const cy = orig.y + orig.height / 2;
       const ncx = left + (cx - b.x) * sx;
       const ncy = top + (cy - b.y) * sy;
-      const uniform = obj.type === "sticky" ? Math.min(sx, sy) : null;
+      const uniform = obj.type === "sticky" || obj.type === "stamp" || obj.type === "image" ? Math.min(sx, sy) : null;
       const w = Math.max(orig.width * (uniform || sx), 8);
       const hh = Math.max(orig.height * (uniform || sy), 8);
       obj.width = w;
@@ -1789,7 +2342,7 @@
     this.guides = [];
     this.stage.classList.remove("is-panning");
     if (g.type === "draw") {
-      this.createHighlight(g.points);
+      this.createStroke(g.points, g.highlight);
       return;
     }
     if (g.type === "erase") {
@@ -1808,6 +2361,18 @@
       this.setTool("select");
       const last = this.history[this.history.length - 1];
       if (last) this.setSelection([...last.after.keys()]);
+      return;
+    }
+    if (g.type === "create-connector") {
+      const dist = Math.hypot(e.clientX - g.startClient.x, e.clientY - g.startClient.y);
+      if (dist < 8) { this.renderOverlay(); return; }
+      const point = this.toWorld(e.clientX, e.clientY);
+      const end = g.target ? this.anchorFor(g.target, point) : { id: null, side: null, x: point.x, y: point.y };
+      this.createConnector(g.start, end);
+      return;
+    }
+    if (g.type === "connector-end") {
+      this.commitChange(g.entry);
       return;
     }
     if (g.type === "move" || g.type === "resize" || g.type === "rotate") {
@@ -1980,7 +2545,7 @@
       this.contextMenu.hidden = true;
       this.zoomMenu.hidden = true;
       this.popover.hidden = true;
-      this.shapeMenu.hidden = true;
+      this.moreMenu.hidden = true;
       if (!this.cancelGesture()) {
         if (this.tool !== "select") this.setTool("select");
         else this.setSelection([]);
@@ -2001,7 +2566,11 @@
     if (mod && key === "d") { e.preventDefault(); this.duplicate(); return; }
     if (mod && key === "c") { e.preventDefault(); this.copy(); return; }
     if (mod && key === "x") { e.preventDefault(); this.cut(); return; }
-    if (mod && key === "v") { e.preventDefault(); this.paste(); return; }
+    if (mod && key === "v") {
+      this.pasteHandled = false;
+      window.setTimeout(() => { if (!this.pasteHandled) this.paste(); }, 120);
+      return;
+    }
     if (mod && (e.key === "]" || e.code === "BracketRight")) { e.preventDefault(); this.reorder(1); return; }
     if (mod && (e.key === "[" || e.code === "BracketLeft")) { e.preventDefault(); this.reorder(-1); return; }
     if (mod && key === "g" && e.shiftKey) { e.preventDefault(); this.ungroup(); return; }
@@ -2017,7 +2586,8 @@
       return;
     }
     if (mod || e.altKey) return;
-    const toolByKey = { v: "select", h: "hand", n: "sticky", r: "shape", t: "text", m: "highlight", e: "eraser" };
+    if (key === "i") { e.preventDefault(); this.pickImage(); return; }
+    const toolByKey = { v: "select", h: "hand", p: "pen", n: "sticky", r: "shape", c: "connector", t: "text", s: "stamp", m: "highlight", e: "eraser" };
     if (toolByKey[key]) { e.preventDefault(); this.setTool(toolByKey[key]); }
   };
 
