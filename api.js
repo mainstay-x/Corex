@@ -449,6 +449,51 @@
     return () => client.removeChannel(channel);
   }
 
+  async function listBoards() {
+    return throwIfError(await client.from("corex_boards").select("id, name, owner_id, created_at, updated_at").order("updated_at", { ascending: false }), "Não foi possível carregar os quadros.");
+  }
+
+  async function createBoard(name) {
+    return throwIfError(await client.from("corex_boards").insert({ name: name || "Quadro sem título" }).select("id, name, owner_id, created_at, updated_at").single(), "Não foi possível criar o quadro.");
+  }
+
+  async function renameBoard(boardId, name) {
+    return throwIfError(await client.from("corex_boards").update({ name }).eq("id", boardId).select("id, name").single(), "Não foi possível renomear o quadro.");
+  }
+
+  async function deleteBoard(boardId) {
+    return throwIfError(await client.from("corex_boards").delete().eq("id", boardId), "Não foi possível excluir o quadro.");
+  }
+
+  async function getBoard(boardId) {
+    const session = await getSession();
+    const userId = session && session.user ? session.user.id : null;
+    const [board, objects, viewport, role] = await Promise.all([
+      client.from("corex_boards").select("id, name, owner_id, created_at, updated_at").eq("id", boardId).maybeSingle(),
+      client.from("corex_board_objects").select("*").eq("board_id", boardId).order("z_index"),
+      client.from("corex_board_viewports").select("x, y, zoom").eq("board_id", boardId).eq("user_id", userId).maybeSingle(),
+      client.rpc("corex_board_role", { p_board: boardId }),
+    ]);
+    const boardData = throwIfError(board, "Não foi possível abrir o quadro.");
+    if (!boardData) throw new Error("Quadro não encontrado ou sem acesso.");
+    return {
+      board: boardData,
+      objects: throwIfError(objects, "Não foi possível carregar os objetos do quadro."),
+      viewport: throwIfError(viewport, "Não foi possível carregar a posição do quadro."),
+      role: throwIfError(role, "Não foi possível verificar o acesso ao quadro."),
+      userId,
+    };
+  }
+
+  async function saveBoardObjects(upserts, deletes) {
+    if (upserts && upserts.length) throwIfError(await client.from("corex_board_objects").upsert(upserts, { onConflict: "id" }), "Não foi possível salvar o quadro.");
+    if (deletes && deletes.length) throwIfError(await client.from("corex_board_objects").delete().in("id", deletes), "Não foi possível salvar o quadro.");
+  }
+
+  async function saveBoardViewport(boardId, viewport) {
+    return throwIfError(await client.from("corex_board_viewports").upsert({ board_id: boardId, x: viewport.x, y: viewport.y, zoom: viewport.zoom }, { onConflict: "board_id,user_id" }), "Não foi possível salvar a posição do quadro.");
+  }
+
   function onAuthStateChange(callback) {
     return client.auth.onAuthStateChange(callback);
   }
@@ -506,6 +551,13 @@
     getAiSummary,
     setAiLimit,
     subscribeWhatsapp,
+    listBoards,
+    createBoard,
+    renameBoard,
+    deleteBoard,
+    getBoard,
+    saveBoardObjects,
+    saveBoardViewport,
     onAuthStateChange,
   });
 })();

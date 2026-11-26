@@ -219,6 +219,7 @@
     if (sdrAccess || closerAccess || billingAccess) items.push({ id: "messages", label: "Mensagens", icon: "◌" });
     if (sdrAccess) items.push({ id: "goals", label: "Metas", icon: "◇" });
     if (!items.length) items.push({ id: "home", label: "Início", icon: "⌂" });
+    if (profile) items.push({ id: "boards", label: "Quadros", icon: "▤" });
     if (canManageUsers(state.profile)) items.push({ id: "users", label: "Usuários", icon: "◎" });
     return items;
   }
@@ -382,6 +383,7 @@
     else if (state.route === "payments") { setHeader("Pagamentos", "Controle manual"); window.CorexScreens.payments.render(screenContext()); }
     else if (state.route === "goals") { setHeader("Metas", "Operação SDR"); window.CorexScreens.goals.render(screenContext()); }
     else if (state.route === "inbox") { setHeader("Inbox", "WhatsApp"); window.CorexScreens.inbox.render(screenContext(), state.routeParam); }
+    else if (state.route === "boards") { setHeader("Quadros", "Whiteboard"); window.CorexScreens.whiteboard.render(screenContext(), state.routeParam); }
     else if (state.route === "messages") { setHeader("Mensagens", "WhatsApp"); window.CorexScreens.messages.render(screenContext()); }
     else renderHome();
     refreshWhatsappCost();
