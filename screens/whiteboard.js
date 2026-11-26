@@ -39,6 +39,7 @@
     { id: "shape", label: "Formas", key: "R", icon: "▭" },
     { id: "text", label: "Texto", key: "T", icon: "T" },
     { id: "highlight", label: "Marca-texto", key: "M", icon: "🖍" },
+    { id: "eraser", label: "Borracha", key: "E", icon: "⌫" },
   ];
   const SYNC_LABELS = { saved: "Salvo", saving: "Salvando…", offline: "Offline", error: "Erro ao salvar" };
 
@@ -1509,6 +1510,11 @@
       this.gesture = { type: "create-shape", start: point, rect: null, pointerId: e.pointerId };
       return;
     }
+    if (this.tool === "eraser") {
+      this.gesture = { type: "erase", ids: new Set(), last: { x: e.clientX, y: e.clientY }, pointerId: e.pointerId };
+      this.eraseAt(e.clientX, e.clientY);
+      return;
+    }
     if (this.tool === "highlight") {
       this.gesture = { type: "draw", points: [[point.x, point.y]], pointerId: e.pointerId };
       this.renderOverlay();
@@ -1582,6 +1588,13 @@
       this.objects.forEach((obj) => { if (!obj.locked && intersects(objectBounds(obj), rect)) ids.add(obj.id); });
       this.selection = new Set(this.expandGroups([...ids]).filter((id) => !this.objects.get(id).locked || g.base.includes(id)));
       this.renderOverlay();
+      return;
+    }
+    if (g.type === "erase") {
+      const dist = Math.hypot(e.clientX - g.last.x, e.clientY - g.last.y);
+      const steps = Math.max(1, Math.ceil(dist / 4));
+      for (let i = 1; i <= steps; i += 1) this.eraseAt(g.last.x + ((e.clientX - g.last.x) * i) / steps, g.last.y + ((e.clientY - g.last.y) * i) / steps);
+      g.last = { x: e.clientX, y: e.clientY };
       return;
     }
     if (g.type === "draw") {
@@ -1779,6 +1792,14 @@
       this.createHighlight(g.points);
       return;
     }
+    if (g.type === "erase") {
+      if (!g.ids.size) return;
+      const entry = this.beginChange([...g.ids]);
+      g.ids.forEach((id) => this.objects.delete(id));
+      this.commitChange(entry);
+      this.setSelection([...this.selection].filter((id) => this.objects.has(id)));
+      return;
+    }
     if (g.type === "create-shape") {
       const r = g.rect && g.rect.width * this.view.zoom > 4 && g.rect.height * this.view.zoom > 4 ? g.rect : null;
       const size = this.shapeKind === "arrow" ? { w: 200, h: 100 } : { w: 160, h: 160 };
@@ -1797,9 +1818,22 @@
     this.renderOverlay();
   };
 
+  Board.prototype.eraseAt = function (clientX, clientY) {
+    const g = this.gesture;
+    document.elementsFromPoint(clientX, clientY).forEach((el) => {
+      const node = el.closest && el.closest(".wb-draw");
+      if (!node || !this.world.contains(node)) return;
+      const obj = this.objects.get(node.dataset.id);
+      if (!obj || obj.locked || g.ids.has(obj.id)) return;
+      g.ids.add(obj.id);
+      node.classList.add("is-erasing");
+    });
+  };
+
   Board.prototype.cancelGesture = function () {
     const g = this.gesture;
     if (!g) return false;
+    if (g.type === "erase") g.ids.forEach((id) => { const node = this.nodes.get(id); if (node) node.classList.remove("is-erasing"); });
     this.gesture = null;
     this.guides = [];
     this.stage.classList.remove("is-panning");
@@ -1983,7 +2017,7 @@
       return;
     }
     if (mod || e.altKey) return;
-    const toolByKey = { v: "select", h: "hand", n: "sticky", r: "shape", t: "text", m: "highlight" };
+    const toolByKey = { v: "select", h: "hand", n: "sticky", r: "shape", t: "text", m: "highlight", e: "eraser" };
     if (toolByKey[key]) { e.preventDefault(); this.setTool(toolByKey[key]); }
   };
 

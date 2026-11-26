@@ -1478,3 +1478,6 @@ textarea:focus {
 .course-chip[data-state="fez"] { border-color: #2f9e44; background: #ebfbee; color: #1f7a3d; }
 .course-chip[data-state="nao"] { border-color: #e03131; background: #fff5f5; color: #c92a2a; }
 .course-filter-count { margin: 12px 0 8px; color: var(--muted); font-size: 13px; }
+.wb-stage[data-tool="eraser"] { cursor: cell; }
+.wb-stage[data-tool="eraser"] .wb-draw path { cursor: cell; }
+.wb-draw.is-erasing { opacity: 0.12; }
