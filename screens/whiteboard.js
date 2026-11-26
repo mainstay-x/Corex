@@ -16,6 +16,15 @@
     { id: "roxo", label: "Roxo", value: "#e3d6ff" },
   ];
   const PALETTE = ["transparent", "#ffffff", "#0d1b2e", "#6b7a90", "#0878e8", "#1f9d55", "#f08c00", "#e03131", "#9c36b5", "#fff3a3", "#cfe6ff", "#d4f5d0"];
+  const HIGHLIGHT_COLORS = [
+    { id: "amarelo", label: "Amarelo", value: "#ffd400" },
+    { id: "verde", label: "Verde", value: "#40c057" },
+    { id: "azul", label: "Azul", value: "#339af0" },
+    { id: "rosa", label: "Rosa", value: "#f06595" },
+    { id: "laranja", label: "Laranja", value: "#ff922b" },
+    { id: "vermelho", label: "Vermelho", value: "#fa5252" },
+  ];
+  const HIGHLIGHT_WIDTH = 18;
   const SHAPES = [
     { id: "rect", label: "Retângulo", icon: "▭" },
     { id: "ellipse", label: "Elipse", icon: "◯" },
@@ -29,6 +38,7 @@
     { id: "sticky", label: "Nota adesiva", key: "N", icon: "▤" },
     { id: "shape", label: "Formas", key: "R", icon: "▭" },
     { id: "text", label: "Texto", key: "T", icon: "T" },
+    { id: "highlight", label: "Marca-texto", key: "M", icon: "🖍" },
   ];
   const SYNC_LABELS = { saved: "Salvo", saving: "Salvando…", offline: "Offline", error: "Erro ao salvar" };
 
@@ -240,6 +250,7 @@
     this.selection = new Set();
     this.tool = "select";
     this.shapeKind = "rect";
+    this.highlightColor = "amarelo";
     this.history = [];
     this.future = [];
     this.nodes = new Map();
@@ -350,6 +361,18 @@
       this.shapeMenu.appendChild(button);
     });
 
+    this.highlightMenu = make("div", "wb-panel wb-shape-menu wb-highlight-menu");
+    this.highlightMenu.hidden = true;
+    HIGHLIGHT_COLORS.forEach((color) => {
+      const swatch = make("button", "wb-swatch");
+      swatch.type = "button";
+      swatch.title = color.label;
+      swatch.dataset.color = color.id;
+      swatch.style.background = color.value;
+      swatch.addEventListener("click", () => { this.highlightColor = color.id; this.updateTools(); });
+      this.highlightMenu.appendChild(swatch);
+    });
+
     const zoomPanel = make("div", "wb-panel wb-zoom");
     const zoomOut = this.iconButton("−", "Diminuir zoom (Ctrl+-)", () => this.stepZoom(-1));
     this.zoomLabel = make("button", "wb-zoom-label", "100%");
@@ -374,7 +397,7 @@
     this.popover = make("div", "wb-panel wb-popover");
     this.popover.hidden = true;
 
-    this.root.append(header, historyPanel, this.toolbar, this.shapeMenu, zoomPanel, this.zoomMenu, this.propsBar, this.contextMenu, this.popover);
+    this.root.append(header, historyPanel, this.toolbar, this.shapeMenu, this.highlightMenu, zoomPanel, this.zoomMenu, this.propsBar, this.contextMenu, this.popover);
   };
 
   Board.prototype.iconButton = function (icon, title, handler) {
@@ -544,6 +567,8 @@
     const shapeButton = this.toolButtons.get("shape");
     if (shapeButton) shapeButton.textContent = SHAPES.find((s) => s.id === this.shapeKind).icon;
     this.shapeMenu.querySelectorAll("[data-shape]").forEach((b) => b.classList.toggle("active", b.dataset.shape === this.shapeKind));
+    this.highlightMenu.hidden = this.tool !== "highlight";
+    this.highlightMenu.querySelectorAll("[data-color]").forEach((b) => b.classList.toggle("active", b.dataset.color === this.highlightColor));
     this.stage.dataset.tool = this.spaceDown ? "hand" : this.tool;
   };
 
@@ -844,6 +869,7 @@
     if (obj.type === "sticky") this.renderSticky(node, obj);
     else if (obj.type === "shape") this.renderShape(node, obj);
     else if (obj.type === "text") this.renderText(node, obj);
+    else if (obj.type === "draw") this.renderDraw(node, obj);
     if (hidden) node.style.display = "none";
   };
 
@@ -893,6 +919,40 @@
     text.textContent = p.text || "";
     text.style.color = p.textColor || "#0d1b2e";
     node.appendChild(text);
+  };
+
+  Board.prototype.strokePath = function (points) {
+    if (!points.length) return "";
+    if (points.length === 1) return "M" + points[0][0] + " " + points[0][1] + " l0.01 0";
+    let d = "M" + points[0][0] + " " + points[0][1];
+    for (let i = 1; i < points.length - 1; i += 1) {
+      const mx = (points[i][0] + points[i + 1][0]) / 2;
+      const my = (points[i][1] + points[i + 1][1]) / 2;
+      d += " Q" + points[i][0] + " " + points[i][1] + " " + mx + " " + my;
+    }
+    const last = points[points.length - 1];
+    return d + " L" + last[0] + " " + last[1];
+  };
+
+  Board.prototype.renderDraw = function (node, obj) {
+    const p = obj.props;
+    const color = HIGHLIGHT_COLORS.find((c) => c.id === p.color) || HIGHLIGHT_COLORS[0];
+    const svg = svgEl("svg", { width: "100%", height: "100%", viewBox: "0 0 " + (p.vw || obj.width) + " " + (p.vh || obj.height), preserveAspectRatio: "none" });
+    svg.appendChild(svgEl("path", { d: this.strokePath(p.points || []), fill: "none", stroke: color.value, "stroke-width": p.strokeWidth || HIGHLIGHT_WIDTH, "stroke-linecap": "round", "stroke-linejoin": "round" }));
+    node.appendChild(svg);
+  };
+
+  Board.prototype.createHighlight = function (points) {
+    const half = HIGHLIGHT_WIDTH / 2;
+    const xs = points.map((pt) => pt[0]);
+    const ys = points.map((pt) => pt[1]);
+    const x = Math.min(...xs) - half;
+    const y = Math.min(...ys) - half;
+    const w = Math.max(...xs) - x + half;
+    const h = Math.max(...ys) - y + half;
+    const rel = points.map((pt) => [Math.round((pt[0] - x) * 10) / 10, Math.round((pt[1] - y) * 10) / 10]);
+    const obj = this.baseObject("draw", x, y, w, h, { points: rel, vw: w, vh: h, color: this.highlightColor, strokeWidth: HIGHLIGHT_WIDTH, highlight: true });
+    this.addObjects([obj], false);
   };
 
   Board.prototype.renderText = function (node, obj) {
@@ -968,6 +1028,14 @@
       box.style.width = r.width * this.view.zoom + "px";
       box.style.height = r.height * this.view.zoom + "px";
       overlay.appendChild(box);
+    }
+    if (this.gesture && this.gesture.type === "draw") {
+      const color = HIGHLIGHT_COLORS.find((c) => c.id === this.highlightColor) || HIGHLIGHT_COLORS[0];
+      const rect = this.stage.getBoundingClientRect();
+      const svg = svgEl("svg", { class: "wb-draw-preview", width: rect.width, height: rect.height });
+      const pts = this.gesture.points.map((pt) => { const sp = this.toScreen(pt[0], pt[1]); return [sp.x, sp.y]; });
+      svg.appendChild(svgEl("path", { d: this.strokePath(pts), fill: "none", stroke: color.value, "stroke-width": HIGHLIGHT_WIDTH * this.view.zoom, "stroke-linecap": "round", "stroke-linejoin": "round" }));
+      overlay.appendChild(svg);
     }
     this.guides.forEach((g) => {
       const line = this.make("div", "wb-guide");
@@ -1067,6 +1135,17 @@
     if (!locked) {
       if (types.size === 1 && types.has("sticky")) {
         STICKY_COLORS.forEach((color) => {
+          const swatch = this.make("button", "wb-swatch" + (selected.every((o) => o.props.color === color.id) ? " active" : ""));
+          swatch.type = "button";
+          swatch.title = color.label;
+          swatch.style.background = color.value;
+          swatch.addEventListener("click", () => this.updateProps({ color: color.id }));
+          add(swatch);
+        });
+        sep();
+      }
+      if (types.size === 1 && types.has("draw")) {
+        HIGHLIGHT_COLORS.forEach((color) => {
           const swatch = this.make("button", "wb-swatch" + (selected.every((o) => o.props.color === color.id) ? " active" : ""));
           swatch.type = "button";
           swatch.title = color.label;
@@ -1430,6 +1509,11 @@
       this.gesture = { type: "create-shape", start: point, rect: null, pointerId: e.pointerId };
       return;
     }
+    if (this.tool === "highlight") {
+      this.gesture = { type: "draw", points: [[point.x, point.y]], pointerId: e.pointerId };
+      this.renderOverlay();
+      return;
+    }
 
     if (handleEl && this.canEdit) {
       const selected = this.editableSelection();
@@ -1498,6 +1582,14 @@
       this.objects.forEach((obj) => { if (!obj.locked && intersects(objectBounds(obj), rect)) ids.add(obj.id); });
       this.selection = new Set(this.expandGroups([...ids]).filter((id) => !this.objects.get(id).locked || g.base.includes(id)));
       this.renderOverlay();
+      return;
+    }
+    if (g.type === "draw") {
+      const last = g.points[g.points.length - 1];
+      if (Math.hypot(point.x - last[0], point.y - last[1]) * this.view.zoom >= 2) {
+        g.points.push([point.x, point.y]);
+        this.renderOverlay();
+      }
       return;
     }
     if (g.type === "create-shape") {
@@ -1683,6 +1775,10 @@
     this.gesture = null;
     this.guides = [];
     this.stage.classList.remove("is-panning");
+    if (g.type === "draw") {
+      this.createHighlight(g.points);
+      return;
+    }
     if (g.type === "create-shape") {
       const r = g.rect && g.rect.width * this.view.zoom > 4 && g.rect.height * this.view.zoom > 4 ? g.rect : null;
       const size = this.shapeKind === "arrow" ? { w: 200, h: 100 } : { w: 160, h: 160 };
@@ -1887,7 +1983,7 @@
       return;
     }
     if (mod || e.altKey) return;
-    const toolByKey = { v: "select", h: "hand", n: "sticky", r: "shape", t: "text" };
+    const toolByKey = { v: "select", h: "hand", n: "sticky", r: "shape", t: "text", m: "highlight" };
     if (toolByKey[key]) { e.preventDefault(); this.setTool(toolByKey[key]); }
   };
 

@@ -1465,3 +1465,9 @@ textarea:focus {
   .wb-shape-menu { bottom: 132px; }
   .wb-props { max-width: calc(100% - 16px); overflow-x: auto; }
 }
+.wb-stage[data-tool="highlight"] { cursor: crosshair; }
+.wb-draw { pointer-events: none; mix-blend-mode: multiply; opacity: 0.45; }
+.wb-draw svg { position: absolute; inset: 0; overflow: visible; }
+.wb-draw path { pointer-events: stroke; cursor: pointer; }
+.wb-draw-preview { position: absolute; top: 0; left: 0; opacity: 0.45; mix-blend-mode: multiply; }
+.wb-highlight-menu { gap: 2px; padding: 6px 8px; }
